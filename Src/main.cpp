@@ -1,30 +1,14 @@
 #include "GpioDriver.hpp"
 #include "RccDriver.hpp"
+#include "Display.hpp"
 
 int main() {
     RccDriver::InitMax48MHz();
     RccDriver::InitMCO();
 
-    GpioDriver led0(GPIOB, 1);
-    GpioDriver led1(GPIOA, 2);
-    GpioDriver led2(GPIOA, 3);
+    GpioDriver cs(GPIOB, 5),
+            wr(GPIOB, 4),
+            data(GPIOB, 3);
 
-    led0.Init(GpioDriver::Mode::Output,
-              GpioDriver::OutType::PushPull,
-              GpioDriver::Pull::None,
-              GpioDriver::Speed::Low);
-    led1.Init(GpioDriver::Mode::Output,
-              GpioDriver::OutType::PushPull,
-              GpioDriver::Pull::None,
-              GpioDriver::Speed::Medium);
-    led2.Init(GpioDriver::Mode::Output,
-              GpioDriver::OutType::PushPull,
-              GpioDriver::Pull::None,
-              GpioDriver::Speed::High);
-
-    while (true) {
-        led0.Toggle();
-        led1.Toggle();
-        led2.Toggle();
-    }
+    while (true) {}
 }
