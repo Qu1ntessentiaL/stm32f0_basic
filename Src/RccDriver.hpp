@@ -5,6 +5,8 @@
 
 class RccDriver {
 public:
+    static volatile uint32_t counter;
+
     static inline void InitMax48MHz() {
         // 1. Включить HSI (должен быть включен по умолчанию, но гарантируем)
         RCC->CR |= RCC_CR_HSION;
@@ -34,5 +36,28 @@ public:
         RCC->CFGR &= ~RCC_CFGR_MCO;
         RCC->CFGR |= RCC_CFGR_MCO_SYSCLK;
         RCC->CFGR |= RCC_CFGR_MCOPRE_DIV16;
+    }
+
+    /**
+     * @brief SysTick initialization
+     * @param periodUs
+     * @param sysClockHz
+     */
+    static inline void InitSysTickUs(uint32_t periodUs, uint32_t sysClockHz) {
+        // Кол-во тактов на заданный период (в микросекундах)
+        uint32_t ticks = (sysClockHz / 1'000'000) * periodUs;
+
+        if (ticks > SysTick_LOAD_RELOAD_Msk) {
+            // Значение превышает максимум (24 бита)
+            // Можно вернуть ошибку или обрезать
+            ticks = SysTick_LOAD_RELOAD_Msk;
+        }
+
+        SysTick->LOAD = ticks - 1;
+        SysTick->VAL = 0; // Сброс счётчика
+
+        SysTick->CTRL = SysTick_CTRL_CLKSOURCE_Msk | // Использовать HCLK
+                        SysTick_CTRL_TICKINT_Msk |   // Включить прерывание
+                        SysTick_CTRL_ENABLE_Msk;     // Запустить таймер
     }
 };

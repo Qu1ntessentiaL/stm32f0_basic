@@ -5,10 +5,21 @@
 int main() {
     RccDriver::InitMax48MHz();
     RccDriver::InitMCO();
+    RccDriver::InitSysTickUs(1000, SystemCoreClock);
 
     GpioDriver cs(GPIOB, 5),
             wr(GPIOB, 4),
             data(GPIOB, 3);
 
-    while (true) {}
+    Display lcd(&cs, &wr, &data);
+    lcd.Init();
+
+    lcd.TestFill();
+    while (true) {
+        __asm volatile ("nop");
+    }
+}
+
+extern "C" void SysTick_Handler(void) {
+
 }
