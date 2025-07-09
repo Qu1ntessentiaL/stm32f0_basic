@@ -26,6 +26,12 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         cmsis
 )
 
+# Найти objdump в PATH
+find_program(OBJDUMP arm-none-eabi-objdump REQUIRED)
+
+# Путь к elf-файлу (предполагается, что имя target — firmware.elf)
+set(ELF_FILE ${CMAKE_BINARY_DIR}/${PROJECT_NAME}.elf)
+set(DISASM_FILE ${CMAKE_BINARY_DIR}/${PROJECT_NAME}_disasm.s)
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E echo "Generating HEX and BIN files..."
@@ -47,6 +53,11 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
 
         # Можно добавить вывод размера файла (опционально)
         COMMAND arm-none-eabi-size $<TARGET_FILE:${PROJECT_NAME}>
+
+        COMMAND ${OBJDUMP} -d -S -M force-thumb -M reg-names-std ${ELF_FILE} > ${DISASM_FILE}
+        COMMENT "Disassembling ${PROJECT_NAME}.elf to ${PROJECT_NAME}_disasm.s"
+        DEPENDS ${PROJECT_NAME}.elf
+        VERBATIM
 )
 
 add_custom_target(erase_flash

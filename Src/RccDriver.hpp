@@ -5,9 +5,7 @@
 
 class RccDriver {
 public:
-    static volatile uint32_t counter;
-
-    static inline void InitMax48MHz() {
+     static inline void InitMax48MHz() {
         // 1. Включить HSI (должен быть включен по умолчанию, но гарантируем)
         RCC->CR |= RCC_CR_HSION;
         while (!(RCC->CR & RCC_CR_HSIRDY)) {}
