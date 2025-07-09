@@ -86,7 +86,7 @@ class Display {
         uint8_t addr = address << 2;
         for (uint8_t i = 0; i < 6; ++i) {
             writeBit((addr & 0x80) != 0);
-            addr << 1;
+            addr <<= 1;
         }
 
         // Send 4-bit data (LSB first)

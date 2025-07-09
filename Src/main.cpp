@@ -1,11 +1,8 @@
 #include "GpioDriver.hpp"
-#include "GpioDriverStatic.hpp"
-#include "RccDriver.hpp"
-#include "Display.hpp"
-#include "UartDriver.hpp"
+#include "GpioDriverCT.hpp"
 #include "Button.hpp"
+#include "RccDriver.hpp"
 #include "TimDriver.hpp"
-#include "IicDriver.hpp"
 
 TimDriver tim17(TIM17);
 
@@ -13,23 +10,20 @@ void Tim17Callback() {
     GPIOB->ODR ^= GPIO_ODR_0;
 }
 
+using s1 = GpioDriverCT<GpioPort::A, 1>;
+using s2 = GpioDriverCT<GpioPort::A, 2>;
+using s3 = GpioDriverCT<GpioPort::A, 3>;
+using s4 = GpioDriverCT<GpioPort::A, 4>;
+
 int main() {
     RccDriver::InitMax48MHz();
     RccDriver::InitMCO(); // MCO connected to R9
     RccDriver::InitSysTickUs(1000, SystemCoreClock);
 
-    GpioDriver s1(GPIOA, 1),
-            s2(GPIOA, 2),
-            s3(GPIOA, 3),
-            s4(GPIOA, 4);
-
-    Button btn1(s1);
-
-    s1.Init(GpioDriver::Mode::Input);
-    s2.Init(GpioDriver::Mode::Input);
-    s3.Init(GpioDriver::Mode::Input);
-    s4.Init(GpioDriver::Mode::Input);
-
+    s1::Init(s1::Mode::Input);
+    s2::Init(s2::Mode::Input);
+    s3::Init(s3::Mode::Input);
+    s4::Init(s4::Mode::Input);
     /**
      * I2C1_SDA [PB7] - R17
      * I2C1_SCL [PB6] - R12
@@ -66,10 +60,6 @@ int main() {
     tim17.setCallback(Tim17Callback);
     tim17.Start();
 
-    //Display lcd(&cs, &wr, &data);
-    //lcd.Init();
-
-    //lcd.TestFill();
     while (true) {
         __NOP();
     }
