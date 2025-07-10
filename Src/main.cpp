@@ -3,27 +3,47 @@
 #include "Button.hpp"
 #include "RccDriver.hpp"
 #include "TimDriver.hpp"
+#include "UsartDriver.hpp"
 
 TimDriver tim17(TIM17);
 
-void Tim17Callback() {
-    GPIOB->ODR ^= GPIO_ODR_0;
-}
+using ButtonS1 = Button<GpioPort::A, 1, 5, 100>;
+using ButtonS2 = Button<GpioPort::A, 2>;
+using ButtonS3 = Button<GpioPort::A, 3>;
+using ButtonS4 = Button<GpioPort::A, 4>;
 
-using s1 = GpioDriverCT<GpioPort::A, 1>;
-using s2 = GpioDriverCT<GpioPort::A, 2>;
-using s3 = GpioDriverCT<GpioPort::A, 3>;
-using s4 = GpioDriverCT<GpioPort::A, 4>;
+using Usart1 = UsartDriver<
+        UsartInstance::COM1,
+        GpioPort::A, 10,
+        GpioPort::A, 9,
+        115200
+>;
+
+void Tim17Callback() {
+    auto e = ButtonS1::tick();
+
+    switch (e) {
+        case ButtonS1::Event::Pressed: // Действие при нажатии
+            GPIOB->BSRR |= GPIO_BSRR_BS_0;
+            break;
+        case ButtonS1::Event::Held: // Действие при удержании
+            break;
+        case ButtonS1::Event::Released: // Действие при отпускании
+            GPIOB->BSRR |= GPIO_BSRR_BR_0;
+            break;
+        default:
+            break;
+    }
+}
 
 int main() {
     RccDriver::InitMax48MHz();
     RccDriver::InitMCO(); // MCO connected to R9
     RccDriver::InitSysTickUs(1000, SystemCoreClock);
 
-    s1::Init(s1::Mode::Input);
-    s2::Init(s2::Mode::Input);
-    s3::Init(s3::Mode::Input);
-    s4::Init(s4::Mode::Input);
+    Usart1::Init(SystemCoreClock);
+    Usart1::SendString("Hello from Usart1!\r\n");
+    ButtonS1::Init();
     /**
      * I2C1_SDA [PB7] - R17
      * I2C1_SCL [PB6] - R12
@@ -33,9 +53,6 @@ int main() {
 
     GpioDriver sda(GPIOB, 7),
             scl(GPIOB, 6);
-
-    GpioDriver rx(GPIOA, 10),
-            tx(GPIOA, 9);
 
     GpioDriver r8(GPIOA, 7),
             r10(GPIOA, 11),
@@ -56,9 +73,9 @@ int main() {
             wr(GPIOB, 4),
             data(GPIOB, 3);
 
-    tim17.Init(47999, 999);
-    tim17.setCallback(Tim17Callback);
-    tim17.Start();
+    //tim17.Init(47999, 1);
+    //tim17.setCallback(Tim17Callback);
+    //tim17.Start();
 
     while (true) {
         __NOP();

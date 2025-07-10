@@ -79,6 +79,11 @@ public:
     }
 
     static inline void SetAlternate(uint8_t af) {
+        static_assert(!(Port == GpioPort::A && (Pin == 13 || Pin == 14)),
+                      "Error: Cannot set alternate function on PA13 or PA14 (SWDIO/SWCLK)");
+
+        EnableClock();
+
         const uint32_t index = Pin / 8;
         const uint32_t shift = (Pin % 8) * 4;
         port()->AFR[index] = (port()->AFR[index] & ~(0xF << shift)) | (af << shift);
