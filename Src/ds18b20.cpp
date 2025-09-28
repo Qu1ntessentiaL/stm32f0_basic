@@ -1,6 +1,7 @@
-#include "ds18b20.hpp"
 #include "stm32f0xx.h"
-//#include "macro.h"
+
+#include "ds18b20.hpp"
+#include "GpioDriver.hpp"
 
 /**
  * @defgroup DS18B20_Private_Types DS18B20 Private Types
@@ -109,13 +110,18 @@ static const uint8_t read_cmd[] = { BYTE_TO_PULSES(0xCC), BYTE_TO_PULSES(0xBE), 
 
 /**
  * @brief Force timer update event and wait for update flag - used for timer initialization
- * @param T Timer register structure
+ * @param tim Timer register structure
  */
-#define FORCE_UPDATE_EVENT(T) do { \
-    (T).EGR = TIM_EGR(UG); \
-    while(!((T).SR & TIM_SR(UIF))); \
-    (T).SR &= ~TIM_SR(UIF); \
-} while(0)
+static inline void ForceUpdateEvent(TIM_TypeDef *tim) {
+    // Сгенерировать событие обновления
+    tim->EGR = TIM_EGR_UG;
+
+    // Подождать, пока UIF установится
+    while (!(tim->SR & TIM_SR_UIF));
+
+    // Сбросить флаг UIF
+    tim->SR &= ~TIM_SR_UIF;
+}
 
 /**
  * @}
@@ -153,7 +159,7 @@ __WEAK void ds18b20_temp_ready(int16_t temp_tenths) {
  * @brief Calculate CRC8 checksum for DS18B20 scratchpad data validation
  * @return CRC8 checksum value
  */
-__STATIC_FORCEINLINE uint8_t check_scratchpad_crc(void) {
+__STATIC_FORCEINLINE uint8_t check_scratchpad_crc() {
     uint8_t crc = 0;
     // Process each byte in the scratchpad (first 8 bytes) for CRC calculation
     for (uint8_t i = 0; i < DS18B20_CRC8_BYTES; i++) {
@@ -172,7 +178,7 @@ __STATIC_FORCEINLINE uint8_t check_scratchpad_crc(void) {
 /**
  * @brief Decode pulse durations into scratchpad bytes using bit timing analysis
  */
-__STATIC_FORCEINLINE void decode_scratchpad(void) {
+__STATIC_FORCEINLINE void decode_scratchpad() {
     // Process each byte in the scratchpad (9 bytes total)
     for (unsigned byte = 0; byte < DS18B20_SCRATCHPAD_LEN; ++byte) {
         const unsigned bit_start = byte * DS18B20_BITS_PER_BYTE;
@@ -193,7 +199,7 @@ __STATIC_FORCEINLINE void decode_scratchpad(void) {
  * @brief Convert raw temperature data from scratchpad to tenths of degrees Celsius
  * @return Temperature value in tenths of degrees Celsius
  */
-__STATIC_FORCEINLINE int16_t decode_temperature(void) {
+__STATIC_FORCEINLINE int16_t decode_temperature() {
     // Combine LSB and MSB of temperature register (bytes 0 and 1)
     int16_t raw = (int16_t)((ctx.scratchpad[1] << 8) | ctx.scratchpad[0]);
     // Convert to tenths of degrees Celsius (raw value in 1/16th degrees)
@@ -205,7 +211,7 @@ __STATIC_FORCEINLINE int16_t decode_temperature(void) {
  * @brief Verify presence of DS18B20 sensor by checking reset pulse timing
  * @return 1 if device present, 0 if no device detected
  */
-__STATIC_FORCEINLINE unsigned check_presence(void) {
+__STATIC_FORCEINLINE unsigned check_presence() {
     // Validate that reset pulse duration is within specification
     // and presence pulse timing indicates a responding device
     return (ctx.edge[0] >= RESET_PULSE_MIN) && (ctx.edge[0] <= RESET_PULSE_MAX) &&
@@ -221,7 +227,7 @@ __STATIC_FORCEINLINE void start_timer(uint16_t arr, uint8_t rcr) {
     TIM1->ARR = arr;
     TIM1->RCR = rcr;
     // Force update event to load new values
-    FORCE_UPDATE_EVENT(TIM1);
+    ForceUpdateEvent(TIM1);
     // Start timer in One Pulse Mode (OPM) - runs once then stops
     TIM1->CR1 |= TIM_CR1_OPM | TIM_CR1_CEN;
 }
@@ -259,7 +265,7 @@ __STATIC_FORCEINLINE void reset_bus() {
     DMA1_Channel3->CCR |= DMA_CCR_MINC | DMA_CCR_PSIZE_0 |
                           DMA_CCR_MSIZE_0 | DMA_CCR_EN; // Enable DMA with memory increment
     // Force timer update to load configuration
-    FORCE_UPDATE_EVENT(TIM1);
+    ForceUpdateEvent(TIM1);
     TIM1->CCR1 = 0;                          // Clear output compare value
     TIM1->DIER |= TIM_DIER_CC2DE;            // Enable DMA request on capture
     TIM1->CR1 |= TIM_CR1_OPM | TIM_CR1_CEN;          // Start timer in one-pulse mode
@@ -281,7 +287,7 @@ __STATIC_FORCEINLINE void send_command(const uint8_t *cmd) {
     TIM1->CCER |= TIM_CCER_CC1E;             // Enable output compare
     TIM1->DIER |= TIM_DIER_CC4DE;            // Enable DMA request on update
     // Force timer update to load configuration
-    FORCE_UPDATE_EVENT(TIM1);
+    ForceUpdateEvent(TIM1);
     // Configure DMA to transmit command pulse sequence
     DMA1_Channel4->CCR = 0;                          // Clear DMA configuration
     DMA1_Channel4->CPAR = (uint32_t) &TIM1->CCR1;     // DMA destination: output compare register
@@ -307,7 +313,7 @@ __STATIC_FORCEINLINE void read_data() {
     TIM1->CCER |= TIM_CCER_CC1E | TIM_CCER_CC2E;       // Enable both channels
     TIM1->DIER |= TIM_DIER_CC2DE;            // Enable DMA request on capture
     // Force timer update to load configuration
-    FORCE_UPDATE_EVENT(TIM1);
+    ForceUpdateEvent(TIM1);
     TIM1->CCR1 = 0;                          // Clear output compare value
     // Configure DMA to capture pulse durations into pulse buffer
     DMA1_Channel3->CCR = 0;                          // Clear DMA configuration
@@ -331,15 +337,21 @@ __STATIC_FORCEINLINE void read_data() {
  * @brief Initialize DS18B20 driver - configure clocks and peripherals
  */
 void ds18b20_init(void) {
-    // Enable clocks for required peripherals: GPIOA, TIM1, DMA1
-    RCC->APB2ENR |= RCC_APB2ENR_IOPAEN | RCC_APB2ENR_TIM1EN;
+    // Configure PA8 for 1-Wire communication (alternate function open drain)
+    GpioDriver oneWire(GPIOA, 8);
+    oneWire.Init(GpioDriver::Mode::Alternate,
+                 GpioDriver::OutType::OpenDrain,
+                 GpioDriver::Pull::None,
+                 GpioDriver::Speed::High);
+    oneWire.SetAlternateFunction(2);
+
+    // Enable clocks for required peripherals: TIM1, DMA1
+    RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
     RCC->AHBENR |= RCC_AHBENR_DMA1EN;
     // Configure timer prescaler for 1µs resolution (72MHz/72 = 1MHz)
     TIM1->PSC = TIM_PRESCALER;
     TIM1->EGR |= TIM_EGR_UG;
     TIM1->BDTR |= TIM_BDTR_MOE;
-    // Configure PA8 for 1-Wire communication (alternate function open drain)
-    GPIOA->CRH |= GPIO_CRH_CNF8_0 | GPIO_CRH_CNF8_1 | GPIO_CRH_MODE8_1;
 }
 
 /**
