@@ -5,6 +5,8 @@
 #include "TimDriver.hpp"
 #include "UsartDriver.hpp"
 
+#include "ds18b20.hpp"
+
 TimDriver tim17(TIM17);
 
 using ButtonS1 = Button<GpioPort::A, 1, 5, 100>;
@@ -77,7 +79,11 @@ int main() {
     //tim17.setCallback(Tim17Callback);
     //tim17.Start();
 
-    while (true) {
-        __NOP();
+    ds18b20_init();
+
+    for (;;) {          // Main event loop (non-blocking, cooperative multitasking)
+        ds18b20_poll(); // Poll DS18B20 state machine - advances 1-Wire communication state
+        // uart_poll_tx(); // Poll UART transmission - feeds hardware from buffer
+        // Other non-blocking tasks can be added here
     }
 }
