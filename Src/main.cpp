@@ -7,19 +7,14 @@
 
 #include "ds18b20.hpp"
 
+using namespace RccDriver;
+
 TimDriver tim17(TIM17);
 
 using ButtonS1 = Button<GpioPort::A, 1, 5, 100>;
 using ButtonS2 = Button<GpioPort::A, 2>;
 using ButtonS3 = Button<GpioPort::A, 3>;
 using ButtonS4 = Button<GpioPort::A, 4>;
-
-using Usart1 = UsartDriver<
-        UsartInstance::COM1,
-        GpioPort::A, 10,
-        GpioPort::A, 9,
-        115200
->;
 
 void Tim17Callback() {
     auto e = ButtonS1::tick();
@@ -39,12 +34,14 @@ void Tim17Callback() {
 }
 
 int main() {
-    RccDriver::InitMax48MHz();
-    RccDriver::InitMCO(); // MCO connected to R9
-    RccDriver::InitSysTickUs(1000, SystemCoreClock);
+    InitMax48MHz();
+    InitMCO(); // MCO connected to R9 resistor (PA8-pin)
+    InitSysTickUs(1000, SystemCoreClock);
 
-    Usart1::Init(SystemCoreClock);
-    Usart1::SendString("Hello from Usart1!\r\n");
+    UsartDriver Usart1;
+
+    UsartDriver<>::Init(SystemCoreClock);
+    UsartDriver<>::SendString("Hello from Usart1!\r\n");
     ButtonS1::Init();
     /**
      * I2C1_SDA [PB7] - R17
@@ -81,9 +78,9 @@ int main() {
 
     ds18b20_init();
 
-    for (;;) {          // Main event loop (non-blocking, cooperative multitasking)
-        ds18b20_poll(); // Poll DS18B20 state machine - advances 1-Wire communication state
-        // uart_poll_tx(); // Poll UART transmission - feeds hardware from buffer
+    for (;;) {            // Main event loop (non-blocking, cooperative multitasking)
+        ds18b20_poll();   // Poll DS18B20 state machine - advances 1-Wire communication state
+        Usart1.poll_tx(); // Poll UART transmission - feeds hardware from buffer
         // Other non-blocking tasks can be added here
     }
 }

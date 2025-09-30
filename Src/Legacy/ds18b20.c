@@ -1,4 +1,4 @@
-#include "ds18b20.hpp"
+#include "ds18b20.h"
 
 /**
  * @defgroup DS18B20_Private_Types DS18B20 Private Types
@@ -335,13 +335,14 @@ __STATIC_FORCEINLINE void read_data() {
  */
 void ds18b20_init(void) {
     // Configure PA8 for 1-Wire communication (alternate function open drain)
+    /*
     GpioDriver oneWire(GPIOA, 8);
     oneWire.Init(GpioDriver::Mode::Alternate,
                  GpioDriver::OutType::OpenDrain,
                  GpioDriver::Pull::None,
                  GpioDriver::Speed::High);
     oneWire.SetAlternateFunction(2);
-
+    */
     // Enable clocks for required peripherals: TIM1, DMA1
     RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
     RCC->AHBENR |= RCC_AHBENR_DMA1EN;

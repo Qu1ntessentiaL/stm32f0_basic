@@ -22,21 +22,8 @@
 #ifndef DS18B20_H
 #define DS18B20_H
 
-#include <cstdint>
+#include <stdint.h>
 #include "stm32f0xx.h"
-#include "GpioDriver.hpp"
-
-class OW {
-
-public:
-
-};
-
-class ds18x20 : public OW {
-
-public:
-
-};
 
 #ifdef __cplusplus
 extern "C" {

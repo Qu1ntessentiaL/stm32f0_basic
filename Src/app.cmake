@@ -6,7 +6,7 @@ file(GLOB_RECURSE SOURCES
 
 # Исключаем указанные файлы
 set(EXCLUDE_FILES
-        # ${CMAKE_CURRENT_LIST_DIR}/main.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/Legacy/ds18b20.c
 )
 
 

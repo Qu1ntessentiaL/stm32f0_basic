@@ -3,9 +3,8 @@
 #include "stm32f0xx.h"
 #include "GpioDriver.hpp"
 
-class RccDriver {
-public:
-     static inline void InitMax48MHz() {
+namespace RccDriver {
+    inline void InitMax48MHz() {
         // 1. Включить HSI (должен быть включен по умолчанию, но гарантируем)
         RCC->CR |= RCC_CR_HSION;
         while (!(RCC->CR & RCC_CR_HSIRDY)) {}
@@ -27,7 +26,7 @@ public:
         SystemCoreClockUpdate();
     }
 
-    static inline void InitMCO() {
+    inline void InitMCO() {
         GpioDriver mco(GPIOA, 8);
         mco.SetAlternateFunction(0);
 
@@ -41,7 +40,7 @@ public:
      * @param periodUs
      * @param sysClockHz
      */
-    static inline void InitSysTickUs(uint32_t periodUs, uint32_t sysClockHz) {
+    inline void InitSysTickUs(uint32_t periodUs, uint32_t sysClockHz) {
         // Кол-во тактов на заданный период (в микросекундах)
         uint32_t ticks = (sysClockHz / 1'000'000) * periodUs;
 
@@ -58,4 +57,4 @@ public:
                         SysTick_CTRL_TICKINT_Msk |   // Включить прерывание
                         SysTick_CTRL_ENABLE_Msk;     // Запустить таймер
     }
-};
+}
