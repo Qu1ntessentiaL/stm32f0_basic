@@ -1,31 +1,32 @@
 #pragma once
 
 #include "stm32f0xx.h"
-#include "GpioDriverCT.hpp"
+#include "GpioDriver.hpp"
 
 /**
  * @brief
  */
-template<GpioPort Port, uint8_t Pin,
-        uint8_t DebounceTicks = 5,
+template<uint8_t DebounceTicks = 5,
         uint16_t HoldTicks = 100>
-class Button {
-    using m_gpio = GpioDriverCT<Port, Pin>;
+class Button : public GpioDriver {
 public:
+    Button(GPIO_TypeDef *port, uint8_t pin) : GpioDriver(port, pin) {
+        Init(Mode::Input);
+    }
+
     enum class State {
-        Idle, DebouncePress, Pressed, DebounceRelease
+        Idle,
+        DebouncePress,
+        Pressed,
+        DebounceRelease
     };
 
     enum class Event {
         None, Pressed, Released, Held
     };
 
-    static inline void Init() {
-        m_gpio::Init(m_gpio::Mode::Input);
-    }
-
-    static inline Event tick() {
-        const bool pressed = m_gpio::Read() == false;
+    inline Event tick() {
+        const bool pressed = Read() == false;
         Event e = Event::None;
 
         switch (m_state) {
@@ -74,6 +75,6 @@ public:
     }
 
 private:
-    static inline State m_state = State::Idle;
-    static inline uint16_t m_counter = 0;
+    State m_state = State::Idle;
+    uint16_t m_counter = 0;
 };

@@ -11,21 +11,21 @@ using namespace RccDriver;
 
 TimDriver tim17(TIM17);
 
-using ButtonS1 = Button<GpioPort::A, 1, 5, 100>;
-using ButtonS2 = Button<GpioPort::A, 2>;
-using ButtonS3 = Button<GpioPort::A, 3>;
-using ButtonS4 = Button<GpioPort::A, 4>;
+Button<> *S1_Ptr = nullptr;
+Button<> *S2_Ptr = nullptr,
+        *S3_Ptr = nullptr,
+        *S4_Ptr = nullptr;
 
 void Tim17Callback() {
-    auto e = ButtonS1::tick();
+    auto e = S1_Ptr->tick();
 
     switch (e) {
-        case ButtonS1::Event::Pressed: // Действие при нажатии
+        case Button<>::Event::Pressed: // Действие при нажатии
             GPIOB->BSRR |= GPIO_BSRR_BS_0;
             break;
-        case ButtonS1::Event::Held: // Действие при удержании
+        case Button<>::Event::Held: // Действие при удержании
             break;
-        case ButtonS1::Event::Released: // Действие при отпускании
+        case Button<>::Event::Released: // Действие при отпускании
             GPIOB->BSRR |= GPIO_BSRR_BR_0;
             break;
         default:
@@ -38,11 +38,18 @@ int main() {
     InitMCO(); // MCO connected to R9 resistor (PA8-pin)
     InitSysTickUs(1000, SystemCoreClock);
 
+    static Button<> BtnS1(GPIOA, 1);
+    S1_Ptr = &BtnS1;
+    static Button<> BtnS2(GPIOA, 2);
+    S2_Ptr = &BtnS2;
+    static Button<> BtnS3(GPIOA, 3);
+    S3_Ptr = &BtnS3;
+    static Button<> BtnS4(GPIOA, 4);
+    S4_Ptr = &BtnS4;
+
     UsartDriver Usart1;
 
     UsartDriver<>::Init(SystemCoreClock);
-    UsartDriver<>::SendString("Hello from Usart1!\r\n");
-    ButtonS1::Init();
     /**
      * I2C1_SDA [PB7] - R17
      * I2C1_SCL [PB6] - R12
