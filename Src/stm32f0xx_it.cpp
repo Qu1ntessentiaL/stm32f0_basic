@@ -10,9 +10,7 @@ extern "C" void HardFault_Handler(void) {
     while (1) {}
 }
 
-extern "C" void SysTick_Handler(void) {
-    GPIOB->ODR ^= GPIO_ODR_0;
-}
+extern "C" void SysTick_Handler(void) {}
 
 extern "C" void EXTI0_1_IRQHandler(void) {}
 

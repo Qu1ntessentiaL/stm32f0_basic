@@ -1,8 +1,60 @@
 #include "ht1621.hpp"
 
-LCD::LCD() : m_cs_pin(GPIOB, 5),
-             m_write_pin(GPIOB, 4),
-             m_data_pin(GPIOB, 3) {
+static inline void itoa_simple(int value, char *buf) {
+    char tmp[12];
+    int i = 0;
+    bool neg = false;
+
+    if (value < 0) {
+        neg = true;
+        value = -value;
+    }
+
+    do {
+        tmp[i++] = '0' + (value % 10);
+        value /= 10;
+    } while (value);
+
+    if (neg)
+        *buf++ = '-';
+
+    while (i--)
+        *buf++ = tmp[i];
+
+    *buf = '\0';
+}
+
+static inline void ftoa_simple(double val, char *buf, uint8_t decimals) {
+    if (val < 0) {
+        *buf++ = '-';
+        val = -val;
+    }
+
+    int int_part = (int) val;
+    double frac = val - int_part;
+
+    // целая часть
+    char intbuf[12];
+    itoa_simple(int_part, intbuf);
+    for (char *p = intbuf; *p; ++p) *buf++ = *p;
+
+    *buf++ = '.';
+
+    // дробная часть
+    for (uint8_t i = 0; i < decimals; ++i) {
+        frac *= 10;
+        int digit = (int) frac;
+        *buf++ = '0' + digit;
+        frac -= digit;
+    }
+
+    *buf = '\0';
+}
+
+
+HT1621B::HT1621B() : m_cs_pin(GPIOB, 5),
+                     m_write_pin(GPIOB, 4),
+                     m_data_pin(GPIOB, 3) {
     m_cs_pin.Init(GpioDriver::Mode::Output,
                   GpioDriver::OutType::PushPull,
                   GpioDriver::Pull::None,
@@ -17,7 +69,7 @@ LCD::LCD() : m_cs_pin(GPIOB, 5),
                     GpioDriver::Speed::High);
 }
 
-void LCD::WriteBit(uint8_t bit) {
+void HT1621B::WriteBit(uint8_t bit) {
     uint8_t i;
     if (bit)
         m_data_pin.Set();
@@ -29,7 +81,7 @@ void LCD::WriteBit(uint8_t bit) {
     m_write_pin.Set();
 }
 
-void LCD::WriteCommand(Commands cmd) {
+void HT1621B::WriteCommand(Commands cmd) {
     uint8_t cmd_v = cmd;
     m_cs_pin.Set();
     m_cs_pin.Reset();
@@ -48,7 +100,7 @@ void LCD::WriteCommand(Commands cmd) {
     m_cs_pin.Set();
 }
 
-void LCD::WriteData(uint8_t address, uint8_t data) {
+void HT1621B::WriteData(uint8_t address, uint8_t data) {
     m_cs_pin.Set();
     m_cs_pin.Reset();
     WriteBit(1);
@@ -74,277 +126,73 @@ void LCD::WriteData(uint8_t address, uint8_t data) {
     m_cs_pin.Set();
 }
 
-void LCD::WriteFull() {
+void HT1621B::WriteFull() {
     for (uint8_t j = 0; j < 32; j++) {
         WriteData(j, Numbers[j]);
     }
 }
 
-void LCD::Clean() {
-    for (uint8_t j = 0; j < 28; j++) {
-        WriteData(j, 0x00);
+void HT1621B::Flush() {
+    for (uint8_t i = 0; i < 32; i++) {
+        WriteData(i, m_vram[i]);
     }
 }
 
-void LCD::Init() {
+void HT1621B::Clear() {
+    memset(m_vram, 0, sizeof(m_vram));
+    Flush();
+}
+
+void HT1621B::Init() {
     WriteCommand(Commands::Bias05);
     WriteCommand(Commands::SysEn);
     WriteCommand(Commands::LcdOn);
-    Clean();
+    Clear();
 }
 
-/*
-0
-	lcdwd(3, 1);
-	lcdwd(2, 2);
-	lcdwd(1, 3);
-	lcdwd(4, 3);
-1
-	lcdwd(3, 1);
-	lcdwd(4, 2);
-2
-	lcdwd(1, 2);
-	lcdwd(2, 3);
-	lcdwd(4, 3);
-3
-	lcdwd(3, 1);
-	lcdwd(2, 3);
-	lcdwd(4, 3);
-4
-	lcdwd(1, 1);
-	lcdwd(2, 1);
-	lcdwd(3, 1);
-	lcdwd(4, 2);
-5
-	lcdwd(1, 1);
-	lcdwd(3, 1);
-	lcdwd(4, 1);
-	lcdwd(2, 3);
-6
-	lcdwd(3, 1);
-	lcdwd(4, 1);
-	lcdwd(1, 3);
-	lcdwd(2, 3);
-7
-	lcdwd(3, 1);
-	lcdwd(4, 3);
-8
-	lcdwd(3, 1);
-	lcdwd(1, 3);
-	lcdwd(2, 3);
-	lcdwd(4, 3);
-9
-	lcdwd(1, 1);
-	lcdwd(3, 1);
-	lcdwd(2, 3);
-	lcdwd(4, 3);
-*/
+void HT1621B::ShowDigit(uint8_t position, uint8_t digit, bool withDot) {
+    if (position >= 6 || digit > 9) return;
 
-void LCD::ShowDigit(uint8_t position, uint8_t digit) {
-    switch (digit) {
-        case 0 :
-            WriteData(3 + (6 - position) * 4, 1);
-            WriteData(2 + (6 - position) * 4, 2);
-            WriteData(1 + (6 - position) * 4, 3);
-            WriteData(4 + (6 - position) * 4, 3);
-            break;
-        case 1 :
-            WriteData(3 + (6 - position) * 4, 1);
-            WriteData(4 + (6 - position) * 4, 2);
-            break;
-        case 2 :
-            WriteData(1 + (6 - position) * 4, 2);
-            WriteData(2 + (6 - position) * 4, 3);
-            WriteData(4 + (6 - position) * 4, 3);
-            break;
-        case 3 :
-            WriteData(3 + (6 - position) * 4, 1);
-            WriteData(2 + (6 - position) * 4, 3);
-            WriteData(4 + (6 - position) * 4, 3);
-            break;
-        case 4 :
-            WriteData(1 + (6 - position) * 4, 1);
-            WriteData(2 + (6 - position) * 4, 1);
-            WriteData(3 + (6 - position) * 4, 1);
-            WriteData(4 + (6 - position) * 4, 2);
-            break;
-        case 5 :
-            WriteData(1 + (6 - position) * 4, 1);
-            WriteData(3 + (6 - position) * 4, 1);
-            WriteData(4 + (6 - position) * 4, 1);
-            WriteData(2 + (6 - position) * 4, 3);
-            break;
-        case 6 :
-            WriteData(3 + (6 - position) * 4, 1);
-            WriteData(4 + (6 - position) * 4, 1);
-            WriteData(1 + (6 - position) * 4, 3);
-            WriteData(2 + (6 - position) * 4, 3);
-            break;
-        case 7 :
-            WriteData(3 + (6 - position) * 4, 1);
-            WriteData(4 + (6 - position) * 4, 3);
-            break;
-        case 8 :
-            WriteData(3 + (6 - position) * 4, 1);
-            WriteData(1 + (6 - position) * 4, 3);
-            WriteData(2 + (6 - position) * 4, 3);
-            WriteData(4 + (6 - position) * 4, 3);
-            break;
-        case 9 :
-            WriteData(1 + (6 - position) * 4, 1);
-            WriteData(3 + (6 - position) * 4, 1);
-            WriteData(2 + (6 - position) * 4, 3);
-            WriteData(4 + (6 - position) * 4, 3);
-            break;
+    const uint8_t base = (5 - position) * 4;
+
+    // Отрисовка цифры
+    for (const auto &seg : digits[digit]) {
+        if (seg.addr == 0) break;
+        WriteData(seg.addr + base, seg.val);
+    }
+
+    // Добавляем точку, если нужно
+    if (withDot) {
+        if (position == 0) return;
+        const auto &dot = dots[5 - position];
+        WriteData(dot.addr, dot.val);
     }
 }
 
-void LCD::ShowDigitDot(uint8_t position, uint8_t digit) {
-    switch (digit) {
-        case 0 :
-            WriteData(3 + (6 - position) * 4, 3);
-            WriteData(2 + (6 - position) * 4, 2);
-            WriteData(1 + (6 - position) * 4, 3);
-            WriteData(4 + (6 - position) * 4, 3);
-            break;
-        case 1 :
-            WriteData(3 + (6 - position) * 4, 3);
-            WriteData(4 + (6 - position) * 4, 2);
-            break;
-        case 2 :
-            WriteData(1 + (6 - position) * 4, 2);
-            WriteData(2 + (6 - position) * 4, 3);
-            WriteData(4 + (6 - position) * 4, 3);
-            break;
-        case 3 :
-            WriteData(3 + (6 - position) * 4, 3);
-            WriteData(2 + (6 - position) * 4, 3);
-            WriteData(4 + (6 - position) * 4, 3);
-            break;
-        case 4 :
-            WriteData(1 + (6 - position) * 4, 1);
-            WriteData(2 + (6 - position) * 4, 1);
-            WriteData(3 + (6 - position) * 4, 3);
-            WriteData(4 + (6 - position) * 4, 2);
-            break;
-        case 5 :
-            WriteData(1 + (6 - position) * 4, 1);
-            WriteData(3 + (6 - position) * 4, 3);
-            WriteData(4 + (6 - position) * 4, 1);
-            WriteData(2 + (6 - position) * 4, 3);
-            break;
-        case 6 :
-            WriteData(3 + (6 - position) * 4, 3);
-            WriteData(4 + (6 - position) * 4, 1);
-            WriteData(1 + (6 - position) * 4, 3);
-            WriteData(2 + (6 - position) * 4, 3);
-            break;
-        case 7 :
-            WriteData(3 + (6 - position) * 4, 3);
-            WriteData(4 + (6 - position) * 4, 3);
-            break;
-        case 8 :
-            WriteData(3 + (6 - position) * 4, 3);
-            WriteData(1 + (6 - position) * 4, 3);
-            WriteData(2 + (6 - position) * 4, 3);
-            WriteData(4 + (6 - position) * 4, 3);
-            break;
-        case 9 :
-            WriteData(1 + (6 - position) * 4, 1);
-            WriteData(3 + (6 - position) * 4, 3);
-            WriteData(2 + (6 - position) * 4, 3);
-            WriteData(4 + (6 - position) * 4, 3);
-            break;
+void HT1621B::ShowInt(int value) {
+    char buf[8];
+    itoa_simple(value, buf);
+    Clear();
+    uint8_t len = 0;
+    while (buf[len] && len < 6) len++;
+    for (uint8_t i = 0; i < len; ++i)
+        ShowDigit(i, buf[len - 1 - i] - '0');
+}
+
+void HT1621B::ShowDouble(double value, uint8_t decimals) {
+    char buf[16];
+    ftoa_simple(value, buf, decimals);
+    Clear();
+    uint8_t pos = 0;
+    for (uint8_t i = 0; buf[i] && pos < 6; ++i) {
+        if (buf[i] == '.') continue;
+        bool dot = (buf[i + 1] == '.');
+        ShowDigit(pos++, buf[i] - '0', dot);
     }
 }
 
-void LCD::ShowInt(int num) {
-    uint8_t j, i = 0;
-    for (j = 0; j <= 27; j++) {
-        WriteData(j, 0x00);
-    }
-    if (num < 0) {
-        //sign = 1;
-        num *= -1;
-    }
-    do {
-        ShowDigit(++i, num % 10);
-        num /= 10;
-    } while (num);
-}
-
-void LCD::ShowDouble(double m) {
-    uint8_t sign = 0, i = 1, j = 1;
-    long n;
-    if (m < 0) {
-        sign = 1;
-        m *= -1;
-    }
-    if (floor(m) != 0) {
-        while (m - floor(m) > 0) {
-            j++;
-            m *= 10;
-        }
-        n = (long) m;
-        do {
-            if (i == j) {
-                ShowDigitDot(j, n % 10);
-                n /= 10;
-                i++;
-            } else {
-                ShowDigit(i, n % 10);
-                n /= 10;
-                i++;
-            }
-        } while (n);
-        if (sign) {
-            WriteData(2 + (6 - i) * 4, 1);
-        }
-    } else {
-        m += 1;
-        while (m - floor(m) > 0) {
-            j++;
-            m *= 10;
-        }
-        n = (long) m;
-        do {
-            if (i == j) {
-                ShowDigitDot(j, n % 10 - 1);
-                n /= 10;
-                i++;
-            } else {
-                ShowDigit(i, n % 10);
-                n /= 10;
-                i++;
-            }
-        } while (n);
-        if (sign) {
-            WriteData(2 + (6 - i) * 4, 1);
-        }
-    }
-}
-
-void LCD::ShowChargeLevel(uint8_t charge) {
-    WriteData(26, 0x00);
-    WriteData(27, 0x00);
-    switch (charge) {
-        case 0 :
-            WriteData(26, 1);
-            break;
-        case 1 :
-            WriteData(26, 1);
-            WriteData(27, 2);
-            break;
-        case 2 :
-            WriteData(26, 1);
-            WriteData(27, 3);
-            break;
-        case 3 :
-            WriteData(26, 3);
-            WriteData(27, 3);
-            break;
-        default :
-            WriteData(26, 0x00);
-            WriteData(27, 0x00);
-    }
+void HT1621B::ShowChargeLevel(uint8_t level) {
+    if (level > 3) level = 0;
+    WriteData(26, chargeLevels[level][0]);
+    WriteData(27, chargeLevels[level][1]);
 }

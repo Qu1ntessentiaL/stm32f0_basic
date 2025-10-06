@@ -18,20 +18,7 @@ Button<> *S1_Ptr = nullptr,
         *S4_Ptr = nullptr;
 
 void Tim17Callback() {
-    auto e = S1_Ptr->tick();
-
-    switch (e) {
-        case Button<>::Event::Pressed: // Действие при нажатии
-            GPIOB->BSRR |= GPIO_BSRR_BS_0;
-            break;
-        case Button<>::Event::Held: // Действие при удержании
-            break;
-        case Button<>::Event::Released: // Действие при отпускании
-            GPIOB->BSRR |= GPIO_BSRR_BR_0;
-            break;
-        default:
-            break;
-    }
+    GPIOB->ODR ^= GPIO_ODR_0;
 }
 
 int main() {
@@ -75,17 +62,21 @@ int main() {
                GpioDriver::Pull::None,
                GpioDriver::Speed::Medium);
 
-    light.Reset();
-
-    //tim17.Init(47999, 1);
-    //tim17.setCallback(Tim17Callback);
-    //tim17.Start();
+    tim17.Init(4799, 10);
+    tim17.setCallback(Tim17Callback);
+    tim17.Start();
 
     //ds18b20_init();
 
-    static LCD disp;
+    static HT1621B disp;
     disp.Init();
-    disp.ShowInt(1234);
+    disp.ShowChargeLevel(1);
+    disp.ShowDigit(0, 5);
+    disp.ShowDigit(1, 5, true);
+    disp.ShowDigit(2, 5, true);
+    disp.ShowDigit(3, 5, true);
+    disp.ShowDigit(4, 5, true);
+    disp.ShowDigit(5, 5, true);
     /*
     for (;;) {            // Main event loop (non-blocking, cooperative multitasking)
         ds18b20_poll();   // Poll DS18B20 state machine - advances 1-Wire communication state
