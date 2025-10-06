@@ -6,13 +6,14 @@
 #include "UsartDriver.hpp"
 
 #include "ds18b20.hpp"
+#include "ht1621.hpp"
 
 using namespace RccDriver;
 
 TimDriver tim17(TIM17);
 
-Button<> *S1_Ptr = nullptr;
-Button<> *S2_Ptr = nullptr,
+Button<> *S1_Ptr = nullptr,
+        *S2_Ptr = nullptr,
         *S3_Ptr = nullptr,
         *S4_Ptr = nullptr;
 
@@ -47,9 +48,8 @@ int main() {
     static Button<> BtnS4(GPIOA, 4);
     S4_Ptr = &BtnS4;
 
-    UsartDriver Usart1;
-
-    UsartDriver<>::Init(SystemCoreClock);
+    //UsartDriver Usart1;
+    //UsartDriver<>::Init(SystemCoreClock);
     /**
      * I2C1_SDA [PB7] - R17
      * I2C1_SCL [PB6] - R12
@@ -75,19 +75,23 @@ int main() {
                GpioDriver::Pull::None,
                GpioDriver::Speed::Medium);
 
-    GpioDriver cs(GPIOB, 5),
-            wr(GPIOB, 4),
-            data(GPIOB, 3);
+    light.Reset();
 
     //tim17.Init(47999, 1);
     //tim17.setCallback(Tim17Callback);
     //tim17.Start();
 
-    ds18b20_init();
+    //ds18b20_init();
 
+    static LCD disp;
+    disp.Init();
+    disp.ShowInt(1234);
+    /*
     for (;;) {            // Main event loop (non-blocking, cooperative multitasking)
         ds18b20_poll();   // Poll DS18B20 state machine - advances 1-Wire communication state
         Usart1.poll_tx(); // Poll UART transmission - feeds hardware from buffer
         // Other non-blocking tasks can be added here
     }
+     */
+    while (true) {}
 }
