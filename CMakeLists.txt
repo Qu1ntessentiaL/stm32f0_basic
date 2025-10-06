@@ -60,6 +60,28 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         VERBATIM
 )
 
+# Показывает таблицу функций (адрес, размер, тип, имя)
+add_custom_target(symbol_sizes
+        COMMAND ${CMAKE_OBJCOPY} -R .comment $<TARGET_FILE:${PROJECT_NAME}> tmp.elf
+        COMMAND arm-none-eabi-nm -S --size-sort tmp.elf | grep " T "
+        COMMAND ${CMAKE_COMMAND} -E rm -f tmp.elf
+        DEPENDS ${PROJECT_NAME}
+        COMMENT "Symbol sizes (sorted by size):"
+)
+
+# Показывает только секцию .text с функциями
+add_custom_target(text_info
+        COMMAND arm-none-eabi-objdump -t $<TARGET_FILE:${PROJECT_NAME}> | grep ".text"
+        DEPENDS ${PROJECT_NAME}
+        COMMENT "Functions in .text section:"
+)
+
+
+add_custom_target(sections_info
+        COMMAND arm-none-eabi-nm -S --size-sort $<TARGET_FILE:${PROJECT_NAME}>
+        COMMENT "Sections info:"
+)
+
 add_custom_target(erase_flash
         COMMAND ${CMAKE_COMMAND} -E echo "Erasing flash memory..."
         COMMAND openocd -f stm32f0.cfg -c "init; reset init; stm32f0x mass_erase 0; reset halt; shutdown"

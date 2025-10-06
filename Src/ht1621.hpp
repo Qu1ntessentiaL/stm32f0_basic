@@ -64,19 +64,19 @@ class HT1621B {
 public:
     HT1621B();
 
-    void WriteFull();
+    void SetData(uint8_t address, uint8_t data);
 
     void Flush();
 
-    void Clear();
+    void Clear(bool flushNow = false);
 
     void Init();
 
-    void ShowInt(int value);
+    void ShowInt(int value, bool flushNow);
 
-    void ShowDouble(double value, uint8_t decimals = 2);
+    void ShowDouble(double value, uint8_t decimals, bool flushNow = false);
 
     void ShowDigit(uint8_t position, uint8_t digit, bool withDot = false);
 
-    void ShowChargeLevel(uint8_t);
+    void ShowChargeLevel(uint8_t, bool flushNow = false);
 };
