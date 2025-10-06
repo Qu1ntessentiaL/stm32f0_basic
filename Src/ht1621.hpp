@@ -72,9 +72,11 @@ public:
 
     void Init();
 
-    void ShowInt(int value, bool flushNow);
+    void ShowInt(int value, bool flushNow = false);
 
-    void ShowDouble(double value, uint8_t decimals, bool flushNow = false);
+    // void ShowDouble(double value, uint8_t decimals, bool flushNow = false);
+
+    void ShowFloat(float value, uint8_t decimals, bool flushNow = false);
 
     void ShowDigit(uint8_t position, uint8_t digit, bool withDot = false);
 

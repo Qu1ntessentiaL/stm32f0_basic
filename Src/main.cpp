@@ -71,7 +71,8 @@ int main() {
     static HT1621B disp;
     disp.Init();
     disp.ShowChargeLevel(1, false);
-    disp.ShowDouble(-3.141592, 2, false);
+    //disp.ShowFloat(-123.456, 2, false);
+    disp.ShowInt(123456);
     disp.Flush();
     /*
     for (;;) {            // Main event loop (non-blocking, cooperative multitasking)
