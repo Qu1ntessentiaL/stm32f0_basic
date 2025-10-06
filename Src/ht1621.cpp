@@ -156,7 +156,7 @@ void HT1621B::ShowDigit(uint8_t position, uint8_t digit, bool withDot) {
     const uint8_t base = (5 - position) * 4;
 
     // Отрисовка цифры
-    for (const auto &seg : digits[digit]) {
+    for (const auto &seg: digits[digit]) {
         if (seg.addr == 0) break;
         WriteData(seg.addr + base, seg.val);
     }
@@ -173,21 +173,78 @@ void HT1621B::ShowInt(int value) {
     char buf[8];
     itoa_simple(value, buf);
     Clear();
+
+    bool negative = (value < 0);
+    uint8_t start = negative ? 1 : 0; // Пропустить '-' при выводе цифр
+
+    // Вычисляем длину (без знака)
     uint8_t len = 0;
-    while (buf[len] && len < 6) len++;
-    for (uint8_t i = 0; i < len; ++i)
-        ShowDigit(i, buf[len - 1 - i] - '0');
+    while (buf[len]) len++;
+    uint8_t digits = len - start;
+
+    // Проверяем, влезет ли в 6 позиций
+    // Если отрицательное — минус + 5 цифр, иначе 6 цифр максимум
+    if ((!negative && digits > 6) || (negative && digits > 5)) {
+        // Покажем "------" как индикатор переполнения
+        for (uint8_t i = 0; i < 6; ++i)
+            WriteData(i * 4 + 2, 1); // Короткий сегмент по центру
+        return;
+    }
+
+    uint8_t pos = 0;
+    for (int i = len - 1; i >= start && pos < 6; --i) {
+        ShowDigit(pos++, buf[i] - '0');
+    }
+
+    // Если отрицательное и есть место — показываем минус
+    if (negative && pos < 6) {
+        // Нарисуем "–" слева от числа
+        // Можно использовать WriteData(base + смещение, значение)
+        uint8_t base = (5 - pos) * 4;
+        WriteData(base + 2, 1); // Маленький горизонтальный сегмент
+    }
 }
 
 void HT1621B::ShowDouble(double value, uint8_t decimals) {
     char buf[16];
     ftoa_simple(value, buf, decimals);
     Clear();
+
+    bool negative = (value < 0);
+
+    // Вычисляем длину строки
+    uint8_t len = 0;
+    for (; buf[len]; ++len);
+
+    // Считаем количество цифр (без точки и минуса)
+    uint8_t digits = 0;
+    for (uint8_t i = 0; i < len; ++i)
+        if (buf[i] >= '0' && buf[i] <= '9')
+            digits++;
+
+    // Проверяем, влезает ли всё в 6 индикаторов
+    // Минус и точка считаются как отдельные позиции
+    uint8_t needed = digits + (negative ? 1 : 0);
+    if (needed > 6) {
+        // Показать "------" при переполнении
+        for (uint8_t i = 0; i < 6; ++i)
+            WriteData(i * 4 + 2, 1);
+        return;
+    }
+
+    // Начинаем вывод справа налево
     uint8_t pos = 0;
-    for (uint8_t i = 0; buf[i] && pos < 6; ++i) {
-        if (buf[i] == '.') continue;
-        bool dot = (buf[i + 1] == '.');
+    for (int i = len - 1; i >= 0 && pos < 6; --i) {
+        if (buf[i] == '.' || buf[i] == '-') continue;
+
+        bool dot = (i < len - 1 && buf[i + 1] == '.');
         ShowDigit(pos++, buf[i] - '0', dot);
+    }
+
+    // Если отрицательное и ещё есть место — показываем минус
+    if (negative && pos < 6) {
+        uint8_t base = (5 - pos) * 4;
+        WriteData(base + 2, 1); // Горизонтальный сегмент «–»
     }
 }
 

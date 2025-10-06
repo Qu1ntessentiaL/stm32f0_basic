@@ -71,12 +71,7 @@ int main() {
     static HT1621B disp;
     disp.Init();
     disp.ShowChargeLevel(1);
-    disp.ShowDigit(0, 5);
-    disp.ShowDigit(1, 5, true);
-    disp.ShowDigit(2, 5, true);
-    disp.ShowDigit(3, 5, true);
-    disp.ShowDigit(4, 5, true);
-    disp.ShowDigit(5, 5, true);
+    disp.ShowDouble(14.23423, 4);
     /*
     for (;;) {            // Main event loop (non-blocking, cooperative multitasking)
         ds18b20_poll();   // Poll DS18B20 state machine - advances 1-Wire communication state
