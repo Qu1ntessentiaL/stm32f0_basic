@@ -6,7 +6,7 @@
 #include "UsartDriver.hpp"
 
 #include "ds18b20.hpp"
-#include "ht1621.hpp"
+#include "Controller.hpp"
 
 using namespace RccDriver;
 
@@ -17,8 +17,73 @@ Button<> *S1_Ptr = nullptr,
         *S3_Ptr = nullptr,
         *S4_Ptr = nullptr;
 
+HT1621B *disp_ptr = nullptr;
+
 void Tim17Callback() {
-    GPIOB->ODR ^= GPIO_ODR_0;
+    auto e1 = S1_Ptr->tick();
+    auto e2 = S2_Ptr->tick();
+    auto e3 = S3_Ptr->tick();
+    auto e4 = S4_Ptr->tick();
+
+    switch (e1) {
+        case Button<>::Event::Pressed:  // Действие при нажатии
+            disp_ptr->Clear();
+            disp_ptr->ShowLetter(5, 'h');
+            disp_ptr->ShowDigit(4, 1, false);
+            disp_ptr->ShowInt(30, true);
+            break;
+        case Button<>::Event::Held:     // Действие при удержании
+            break;
+        case Button<>::Event::Released: // Действие при отпускании
+            GPIOB->BSRR |= GPIO_BSRR_BR_0;
+            break;
+        default:
+            break;
+    }
+    /*
+    switch (e2) {
+        case Button<>::Event::Pressed:  // Действие при нажатии
+            disp_ptr->ShowLetter(5, 't');
+            disp_ptr->ShowDigit(4, 1, false);
+            disp_ptr->ShowInt(30, true);
+            break;
+        case Button<>::Event::Held:     // Действие при удержании
+            break;
+        case Button<>::Event::Released: // Действие при отпускании
+            GPIOB->BSRR |= GPIO_BSRR_BR_0;
+            break;
+        default:
+            break;
+    }
+
+    switch (e3) {
+        case Button<>::Event::Pressed:  // Действие при нажатии
+            disp_ptr->Clear();
+            disp_ptr->ShowLetter(5, 'Y', true);
+            break;
+        case Button<>::Event::Held:     // Действие при удержании
+            break;
+        case Button<>::Event::Released: // Действие при отпускании
+            GPIOB->BSRR |= GPIO_BSRR_BR_0;
+            break;
+        default:
+            break;
+    }
+
+    switch (e4) {
+        case Button<>::Event::Pressed:  // Действие при нажатии
+            disp_ptr->Clear();
+            disp_ptr->ShowLetter(5, 'Y', true);
+            break;
+        case Button<>::Event::Held:     // Действие при удержании
+            break;
+        case Button<>::Event::Released: // Действие при отпускании
+            GPIOB->BSRR |= GPIO_BSRR_BR_0;
+            break;
+        default:
+            break;
+    }
+     */
 }
 
 int main() {
@@ -69,11 +134,11 @@ int main() {
     //ds18b20_init();
 
     static HT1621B disp;
-    disp.Init();
-    disp.ShowChargeLevel(1, false);
-    //disp.ShowFloat(-123.456, 2, false);
-    disp.ShowInt(123456);
-    disp.Flush();
+    disp_ptr = &disp;
+    disp_ptr->ShowLetter(5, 't');
+    disp_ptr->ShowDigit(4, 0, false);
+    disp_ptr->ShowInt(25, true);
+
     /*
     for (;;) {            // Main event loop (non-blocking, cooperative multitasking)
         ds18b20_poll();   // Poll DS18B20 state machine - advances 1-Wire communication state

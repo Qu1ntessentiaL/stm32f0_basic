@@ -98,7 +98,7 @@ HT1621B::HT1621B() : m_cs_pin(GPIOB, 5),
                     GpioDriver::OutType::PushPull,
                     GpioDriver::Pull::None,
                     GpioDriver::Speed::High);
-    Clear();
+    Init();
 }
 
 /**
@@ -185,13 +185,14 @@ inline void HT1621B::Clear(bool flushNow) {
 }
 
 void HT1621B::Init() {
-    WriteCommand(Commands::Bias05);
     WriteCommand(Commands::SysEn);
     WriteCommand(Commands::LcdOn);
+    WriteCommand(Commands::Bias13);
+    WriteCommand(Commands::RC256K);
     Clear(true);
 }
 
-void HT1621B::ShowDigit(uint8_t position, uint8_t digit, bool withDot) {
+void HT1621B::ShowDigit(uint8_t position, uint8_t digit, bool withDot, bool flushNow) {
     if (position >= 6 || digit > 9) return;
 
     const uint8_t base = (5 - position) * 4;
@@ -207,6 +208,53 @@ void HT1621B::ShowDigit(uint8_t position, uint8_t digit, bool withDot) {
         const auto &dot = dots[5 - position];
         SetData(dot.addr, dot.val);
     }
+
+    if (flushNow) Flush();
+}
+
+void HT1621B::ShowFull(bool flushNow) {
+    memset(m_vram, 0xff, sizeof(m_vram));
+    if (flushNow) Flush();
+}
+
+void HT1621B::ShowLetter(uint8_t position, char c, bool flushNow) {
+    if (position >= 6) return;
+
+    const uint8_t base = (5 - position) * 4;
+
+    const Segment* segs = nullptr;
+    uint8_t segCount = 0;
+
+    switch (c) {
+        case 'A': segs = letters[0]; segCount = 5; break;
+        case 'b': segs = letters[1]; segCount = 4; break;
+        case 'C': segs = letters[2]; segCount = 3; break;
+        case 'd': segs = letters[3]; segCount = 4; break;
+        case 'E': segs = letters[4]; segCount = 4; break;
+        case 'F': segs = letters[5]; segCount = 3; break;
+        case 'G': segs = letters[6]; segCount = 4; break;
+        case 'h': segs = letters[7]; segCount = 4; break;
+        case 'I': segs = letters[8]; segCount = 2; break;
+        case 'J': segs = letters[9]; segCount = 3; break;
+        case 'L': segs = letters[10]; segCount = 2; break;
+        case 'n': segs = letters[11]; segCount = 3; break;
+        case 'o': segs = letters[12]; segCount = 3; break;
+        case 'P': segs = letters[13]; segCount = 4; break;
+        case 'r': segs = letters[14]; segCount = 2; break;
+        case 'S': segs = letters[15]; segCount = 4; break;
+        case 't': segs = letters[16]; segCount = 3; break;
+        case 'U': segs = letters[17]; segCount = 4; break;
+        case 'Y': segs = letters[18]; segCount = 4; break;
+        case '-': segs = letters[19]; segCount = 1; break;
+        case '_': segs = letters[20]; segCount = 1; break;
+        default: return;
+    }
+
+    for (uint8_t i = 0; i < segCount; ++i) {
+        SetData(segs[i].addr + base, segs[i].val);
+    }
+
+    if (flushNow) Flush();
 }
 
 void HT1621B::ShowInt(int value, bool flushNow) {
@@ -233,7 +281,7 @@ void HT1621B::ShowInt(int value, bool flushNow) {
 
     uint8_t pos = 0;
     for (int i = len - 1; i >= start && pos < 6; --i) {
-        ShowDigit(pos++, buf[i] - '0');
+        ShowDigit(pos++, buf[i] - '0', false, false);
     }
 
     // Если отрицательное и есть место — показываем минус
@@ -243,6 +291,8 @@ void HT1621B::ShowInt(int value, bool flushNow) {
         uint8_t base = (5 - pos) * 4;
         SetData(base + 2, 1); // Маленький горизонтальный сегмент
     }
+
+    if (flushNow) Flush();
 }
 
 // Расходует очень много Flash
@@ -325,7 +375,7 @@ void HT1621B::ShowFloat(float value, uint8_t decimals, bool flushNow) {
         if (buf[i] == '.' || buf[i] == '-') continue;
 
         bool dot = (i < len - 1 && buf[i + 1] == '.');
-        ShowDigit(pos++, buf[i] - '0', dot);
+        ShowDigit(pos++, buf[i] - '0', dot, false);
     }
 
     // Если отрицательное и есть место

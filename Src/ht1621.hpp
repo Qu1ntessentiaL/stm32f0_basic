@@ -1,13 +1,11 @@
+#pragma once
+
 #include "cstring"
 #include "cmath"
 #include "stm32f0xx.h"
 #include "GpioDriver.hpp"
 
 class HT1621B {
-    static constexpr uint8_t Numbers[10] = {0xEB, 0x60, 0xC7, 0xE5,
-                                            0x6C, 0xAD, 0xAF, 0xE0,
-                                            0xEF, 0xED};
-
     struct Segment {
         uint8_t addr;
         uint8_t val;
@@ -24,6 +22,31 @@ class HT1621B {
             {{3, 1}, {4, 3}},                                          // 7
             {{3, 1}, {1, 3}, {2, 3}, {4, 3}}, // 8
             {{1, 1}, {3, 1}, {2, 3}, {4, 3}}  // 9
+    };
+
+    // Латинские буквы для 7-сегментного индикатора
+    static constexpr Segment letters[][5] = {
+            /* A */ {{1,3}, {2,1}, {3,1}, {4,3}},
+            /* b */ {{1,3}, {2,3}, {3,1}},
+            /* C */ {{1,3}, {2,2}, {4,1}},
+            /* d */ {{1,2}, {2,3}, {3,1}, {4,2}},
+            /* E */ {{1,3}, {2,3}, {4,1}},
+            /* F */ {{1,3}, {2,1}, {4,1}},
+            /* G */ {{1,3}, {2,2}, {3,1}, {4,1}},
+            /* h */ {{1,3}, {2,1}, {3,1}},
+            /* I */ {{3,1}, {4,2}},
+            /* J */ {{2,2}, {3,1}, {4,1}},
+            /* L */ {{1,3}, {2,2}},
+            /* n */ {{2,2}, {3,1}, {1,3}},
+            /* o */ {{1,1}, {2,3}, {3,1}},
+            /* P */ {{1,1}, {2,1}, {3,1}, {4,3}},
+            /* r */ {{1,2}, {2,1}},
+            /* S */ {{1,1}, {2,3}, {3,1}, {4,1}},
+            /* t */ {{1,3}, {2,3}},
+            /* U */ {{1,3}, {2,2}, {3,1}, {4,1}},
+            /* Y */ {{1,1}, {2,1}, {3,1}, {4,1}},
+            /* - */ {{2,1}},
+            /* _ */ {{2,2}},
     };
 
     static constexpr Segment dots[6] = {
@@ -47,6 +70,7 @@ class HT1621B {
         SysEn,
         LcdOff,
         LcdOn,
+        RC256K = 0x18,
         Bias05 = 0x28, // 4 commons option
         Bias13 = 0x29, // 4 commons option
     };
@@ -72,13 +96,17 @@ public:
 
     void Init();
 
+    void ShowFull(bool flushNow = false);
+
+    void ShowLetter(uint8_t position, char c, bool flushNow = false);
+
     void ShowInt(int value, bool flushNow = false);
 
     // void ShowDouble(double value, uint8_t decimals, bool flushNow = false);
 
     void ShowFloat(float value, uint8_t decimals, bool flushNow = false);
 
-    void ShowDigit(uint8_t position, uint8_t digit, bool withDot = false);
+    void ShowDigit(uint8_t position, uint8_t digit, bool withDot, bool flushNow = false);
 
     void ShowChargeLevel(uint8_t, bool flushNow = false);
 };
