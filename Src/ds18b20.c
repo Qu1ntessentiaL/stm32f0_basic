@@ -118,6 +118,7 @@ static inline void ForceUpdateEvent(TIM_TypeDef *tim) {
 
     // Сбросить флаг UIF
     tim->SR &= ~TIM_SR_UIF;
+    __DSB();
 }
 
 static inline void PA8_to_TIM1_CH1_AF2(void) {
@@ -180,7 +181,7 @@ __WEAK void ds18b20_temp_ready(int16_t temp_tenths) {
  * @brief Calculate CRC8 checksum for DS18B20 scratchpad data validation
  * @return CRC8 checksum value
  */
-__STATIC_FORCEINLINE uint8_t check_scratchpad_crc() {
+__STATIC_FORCEINLINE uint8_t check_scratchpad_crc(void) {
     uint8_t crc = 0;
     // Process each byte in the scratchpad (first 8 bytes) for CRC calculation
     for (uint8_t i = 0; i < DS18B20_CRC8_BYTES; i++) {
@@ -199,7 +200,7 @@ __STATIC_FORCEINLINE uint8_t check_scratchpad_crc() {
 /**
  * @brief Decode pulse durations into scratchpad bytes using bit timing analysis
  */
-__STATIC_FORCEINLINE void decode_scratchpad() {
+__STATIC_FORCEINLINE void decode_scratchpad(void) {
     // Process each byte in the scratchpad (9 bytes total)
     for (unsigned byte = 0; byte < DS18B20_SCRATCHPAD_LEN; ++byte) {
         const unsigned bit_start = byte * DS18B20_BITS_PER_BYTE;
@@ -220,7 +221,7 @@ __STATIC_FORCEINLINE void decode_scratchpad() {
  * @brief Convert raw temperature data from scratchpad to tenths of degrees Celsius
  * @return Temperature value in tenths of degrees Celsius
  */
-__STATIC_FORCEINLINE int16_t decode_temperature() {
+__STATIC_FORCEINLINE int16_t decode_temperature(void) {
     // Combine LSB and MSB of temperature register (bytes 0 and 1)
     int16_t raw = (int16_t) ((ctx.scratchpad[1] << 8) | ctx.scratchpad[0]);
     // Convert to tenths of degrees Celsius (raw value in 1/16th degrees)
@@ -232,7 +233,7 @@ __STATIC_FORCEINLINE int16_t decode_temperature() {
  * @brief Verify presence of DS18B20 sensor by checking reset pulse timing
  * @return 1 if device present, 0 if no device detected
  */
-__STATIC_FORCEINLINE unsigned check_presence() {
+__STATIC_FORCEINLINE unsigned check_presence(void) {
     // Validate that reset pulse duration is within specification
     // and presence pulse timing indicates a responding device
     return (ctx.edge[0] >= RESET_PULSE_MIN) && (ctx.edge[0] <= RESET_PULSE_MAX) &&
@@ -257,18 +258,18 @@ __STATIC_FORCEINLINE void start_timer(uint16_t arr, uint8_t rcr) {
  * @brief Wait for temperature conversion to complete (750ms typical)
  * @note Non-blocking - starts timer that will generate update event when complete
  */
-__STATIC_FORCEINLINE void wait_conversion() { start_timer(62500, 11); }
+__STATIC_FORCEINLINE void wait_conversion(void) { start_timer(62500, 11); }
 
 /**
  * @brief Start inter-measurement pause period (500ms)
  * @note Non-blocking - starts timer for inter-measurement delay
  */
-__STATIC_FORCEINLINE void start_cycle_pause() { start_timer(62500, 79); }
+__STATIC_FORCEINLINE void start_cycle_pause(void) { start_timer(62500, 79); }
 
 /**
  * @brief Initialize 1-Wire bus reset sequence using timer and DMA
  */
-__STATIC_FORCEINLINE void reset_bus() {
+__STATIC_FORCEINLINE void reset_bus(void) {
     // Configure timer for reset pulse generation (480µs low)
     TIM1->ARR = RESET_TIMEOUT;              // Total reset slot time (960µs)
     TIM1->CCR1 = RESET_PULSE_DURATION;       // Reset pulse duration (480µs)
@@ -322,7 +323,7 @@ __STATIC_FORCEINLINE void send_command(const uint8_t *cmd) {
  * @brief Read scratchpad data from DS18B20 using timer capture and DMA
  * @note Non-blocking - configures hardware to capture data automatically
  */
-__STATIC_FORCEINLINE void read_data() {
+__STATIC_FORCEINLINE void read_data(void) {
     // Configure timer for data reading with input capture
     TIM1->RCR = DS18B20_SCRATCHPAD_BITS - 1; // Number of repetitions (72 bits)
     TIM1->ARR = ONE_PULSE + ZERO_PULSE + 1;  // Total bit slot time (62µs)
