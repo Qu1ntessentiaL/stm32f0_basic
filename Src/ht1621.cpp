@@ -185,10 +185,9 @@ inline void HT1621B::Clear(bool flushNow) {
 }
 
 void HT1621B::Init() {
+    WriteCommand(Commands::Bias05);
     WriteCommand(Commands::SysEn);
     WriteCommand(Commands::LcdOn);
-    WriteCommand(Commands::Bias13);
-    WriteCommand(Commands::RC256K);
     Clear(true);
 }
 

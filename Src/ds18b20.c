@@ -1,4 +1,4 @@
-#include "ds18b20.hpp"
+#include "ds18b20.h"
 
 /**
  * @defgroup DS18B20_Private_Types DS18B20 Private Types
@@ -12,11 +12,11 @@
 typedef struct {
     union {
         volatile uint16_t edge[36];       /**< Edge timestamps for presence detection */
-        volatile uint8_t  pulse[72];      /**< Pulse durations for data decoding */
-        uint8_t           scratchpad[9];  /**< Sensor scratchpad data */
-        uint64_t          fill_union;     /**< Utility field for filling the union */
+        volatile uint8_t pulse[72];      /**< Pulse durations for data decoding */
+        uint8_t scratchpad[9];  /**< Sensor scratchpad data */
+        uint64_t fill_union;     /**< Utility field for filling the union */
     };
-    uint8_t               current_state;  /**< Current state of the state machine */
+    uint8_t current_state;  /**< Current state of the state machine */
 } DS18B20_ctx_t;
 
 /**
@@ -40,8 +40,8 @@ static DS18B20_ctx_t ctx;
  * @{
  */
 
-/** @brief Timer configuration for 1µs resolution (72MHz system clock / 72 = 1MHz) */
-#define TIM_PRESCALER           71
+/** @brief Timer configuration for 1µs resolution (48MHz system clock / 48 = 1MHz) */
+#define TIM_PRESCALER           47
 /** @brief Minimum reset pulse duration in microseconds */
 #define RESET_PULSE_MIN       480U
 /** @brief Maximum reset pulse duration in microseconds */
@@ -100,10 +100,10 @@ static DS18B20_ctx_t ctx;
     B2P(B, 4), B2P(B, 5), B2P(B, 6), B2P(B, 7)
 
 /** @brief DS18B20 Convert T command sequence in pulse duration format */
-static const uint8_t conv_cmd[] = { BYTE_TO_PULSES(0xCC), BYTE_TO_PULSES(0x44), 0 };
+static const uint8_t conv_cmd[] = {BYTE_TO_PULSES(0xCC), BYTE_TO_PULSES(0x44), 0};
 
 /** @brief DS18B20 Read Scratchpad command sequence in pulse duration format */
-static const uint8_t read_cmd[] = { BYTE_TO_PULSES(0xCC), BYTE_TO_PULSES(0xBE), 0 };
+static const uint8_t read_cmd[] = {BYTE_TO_PULSES(0xCC), BYTE_TO_PULSES(0xBE), 0};
 
 /**
  * @brief Force timer update event and wait for update flag - used for timer initialization
@@ -120,6 +120,29 @@ static inline void ForceUpdateEvent(TIM_TypeDef *tim) {
     tim->SR &= ~TIM_SR_UIF;
 }
 
+static inline void PA8_to_TIM1_CH1_AF2(void) {
+    // 1. Включаем тактирование GPIOA
+    RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
+
+    // 2. Настраиваем PA8 как "Alternate Function"
+    GPIOA->MODER &= ~(3U << (8 * 2));   // очистить 2 бита (16 и 17)
+    GPIOA->MODER |= (2U << (8 * 2));   // установить 10b = Alternate Function
+
+    // 3. Настраиваем тип выхода (Push-Pull)
+    GPIOA->OTYPER &= ~(1U << 8);        // 0 = Push-Pull
+
+    // 4. Настраиваем скорость
+    GPIOA->OSPEEDR |= (3U << (8 * 2));  // 11b = High speed
+
+    // 5. Настраиваем без подтяжек
+    GPIOA->PUPDR &= ~(3U << (8 * 2));   // 00b = No pull-up/pull-down
+
+    // 6. Выбираем альтернативную функцию AF2 для TIM1_CH1
+    // У PA8 альтернативные функции задаются в AFRH (пины 8..15)
+    GPIOA->AFR[1] &= ~(0xFU << ((8 - 8) * 4)); // очистить 4 бита
+    GPIOA->AFR[1] |= (0x2U << ((8 - 8) * 4)); // установить AF2
+}
+
 /**
  * @}
  */
@@ -134,7 +157,7 @@ static inline void ForceUpdateEvent(TIM_TypeDef *tim) {
  * @param[in] action 0 to turn LED off, non-zero to turn LED on
  */
 __WEAK void ds18b20_led_control(unsigned action) {
-    (void)action;
+    (void) action;
     // Default implementation - empty (no LED control)
 }
 
@@ -146,9 +169,10 @@ __WEAK void ds18b20_led_control(unsigned action) {
 __WEAK void ds18b20_temp_ready(int16_t temp_tenths, uint32_t t) {
     (void)t;
 #else
+
 __WEAK void ds18b20_temp_ready(int16_t temp_tenths) {
 #endif
-    (void)temp_tenths;
+    (void) temp_tenths;
     // Default implementation - empty (no temperature handling)
 }
 
@@ -198,7 +222,7 @@ __STATIC_FORCEINLINE void decode_scratchpad() {
  */
 __STATIC_FORCEINLINE int16_t decode_temperature() {
     // Combine LSB and MSB of temperature register (bytes 0 and 1)
-    int16_t raw = (int16_t)((ctx.scratchpad[1] << 8) | ctx.scratchpad[0]);
+    int16_t raw = (int16_t) ((ctx.scratchpad[1] << 8) | ctx.scratchpad[0]);
     // Convert to tenths of degrees Celsius (raw value in 1/16th degrees)
     // Multiply by 10 then divide by 16 to get value in tenths of degree
     return (raw * 10) / 16;
@@ -278,19 +302,19 @@ __STATIC_FORCEINLINE void send_command(const uint8_t *cmd) {
     TIM1->RCR = DS18B20_DMA_TRANSFERS - 1;   // Number of repetitions (16 transfers)
     TIM1->ARR = ONE_PULSE + ZERO_PULSE + 1;  // Total bit slot time (62µs)
     TIM1->CCR1 = cmd[0];                     // First pulse duration
-    TIM1->CCR4 = ONE_PULSE + ZERO_PULSE;     // Update trigger time
+    TIM1->CCR2 = ONE_PULSE + ZERO_PULSE;     // Update trigger time
     // Configure channel 1 for output compare mode
     TIM1->CCMR1 |= TIM_CCMR1_OC1M_0 | TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1M_2;
     TIM1->CCER |= TIM_CCER_CC1E;             // Enable output compare
-    TIM1->DIER |= TIM_DIER_CC4DE;            // Enable DMA request on update
+    TIM1->DIER |= TIM_DIER_CC2DE;            // Enable DMA request on update
     // Force timer update to load configuration
     ForceUpdateEvent(TIM1);
     // Configure DMA to transmit command pulse sequence
-    DMA1_Channel4->CCR = 0;                          // Clear DMA configuration
-    DMA1_Channel4->CPAR = (uint32_t) &TIM1->CCR1;     // DMA destination: output compare register
-    DMA1_Channel4->CMAR = (uint32_t) &cmd[1];         // DMA source: command data (skip first byte)
-    DMA1_Channel4->CNDTR = DS18B20_DMA_TRANSFERS;    // Number of transfers
-    DMA1_Channel4->CCR |= DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_0 | DMA_CCR_EN; // Enable DMA with memory increment
+    DMA1_Channel2->CCR = 0;                          // Clear DMA configuration
+    DMA1_Channel2->CPAR = (uint32_t) &TIM1->CCR1;     // DMA destination: output compare register
+    DMA1_Channel2->CMAR = (uint32_t) &cmd[1];         // DMA source: command data (skip first byte)
+    DMA1_Channel2->CNDTR = DS18B20_DMA_TRANSFERS;    // Number of transfers
+    DMA1_Channel2->CCR |= DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_0 | DMA_CCR_EN; // Enable DMA with memory increment
     TIM1->CR1 |= TIM_CR1_OPM | TIM_CR1_CEN;           // Start timer in one-pulse mode
 }
 
@@ -334,14 +358,6 @@ __STATIC_FORCEINLINE void read_data() {
  * @brief Initialize DS18B20 driver - configure clocks and peripherals
  */
 void ds18b20_init(void) {
-    // Configure PA8 for 1-Wire communication (alternate function open drain)
-    GpioDriver oneWire(GPIOA, 8);
-    oneWire.Init(GpioDriver::Mode::Alternate,
-                 GpioDriver::OutType::OpenDrain,
-                 GpioDriver::Pull::None,
-                 GpioDriver::Speed::High);
-    oneWire.SetAlternateFunction(2);
-
     // Enable clocks for required peripherals: TIM1, DMA1
     RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
     RCC->AHBENR |= RCC_AHBENR_DMA1EN;
@@ -349,6 +365,8 @@ void ds18b20_init(void) {
     TIM1->PSC = TIM_PRESCALER;
     TIM1->EGR |= TIM_EGR_UG;
     TIM1->BDTR |= TIM_BDTR_MOE;
+    // Configure PA8 for 1-Wire communication (alternate function open drain)
+    PA8_to_TIM1_CH1_AF2();
 }
 
 /**
@@ -358,9 +376,9 @@ void ds18b20_init(void) {
  */
 void ds18b20_poll(void) {
 
-    #if defined ELAPSED_TIME
-        static uint32_t elapsed_time;
-    #endif
+#if defined ELAPSED_TIME
+    static uint32_t elapsed_time;
+#endif
 
     // Check if timer update interrupt occurred (indicates operation completion)
     // This is the non-blocking way to detect when timed operations finish
@@ -371,11 +389,11 @@ void ds18b20_poll(void) {
     // State machine to manage 1-Wire communication sequence
     switch (ctx.current_state) {
         case 0: // IDLE - Initialize for new measurement cycle
-             #if defined ELAPSED_TIME
-                 elapsed_time = DWT->CYCCNT;
-             #endif
+#if defined ELAPSED_TIME
+            elapsed_time = DWT->CYCCNT;
+#endif
             // Initialize union memory (fills with 0xFF pattern)
-            ctx.fill_union = (uint64_t)-1;
+            ctx.fill_union = (uint64_t) -1;
             // Transition to START state
             ctx.current_state = 1;
             /* fallthrough to START state immediately */
@@ -400,9 +418,9 @@ void ds18b20_poll(void) {
             } else {
                 // No device present - report error and pause
                 ds18b20_temp_ready(DS18B20_TEMP_ERROR_NO_SENSOR
-                #if defined ELAPSED_TIME
-                    , DWT->CYCCNT - elapsed_time
-                #endif
+#if defined ELAPSED_TIME
+                        , DWT->CYCCNT - elapsed_time
+#endif
                 );
                 // Start inter-measurement pause
                 start_cycle_pause();
@@ -435,9 +453,9 @@ void ds18b20_poll(void) {
             } else {
                 // No device present - report error and pause
                 ds18b20_temp_ready(DS18B20_TEMP_ERROR_NO_SENSOR
-                #if defined ELAPSED_TIME
-                    , DWT->CYCCNT - elapsed_time
-                #endif
+#if defined ELAPSED_TIME
+                        , DWT->CYCCNT - elapsed_time
+#endif
                 );
                 // Start inter-measurement pause
                 start_cycle_pause();
@@ -463,16 +481,16 @@ void ds18b20_poll(void) {
             if (ctx.scratchpad[8] == check_scratchpad_crc()) {
                 // CRC valid - decode and report temperature
                 ds18b20_temp_ready(decode_temperature()
-                #if defined ELAPSED_TIME
-                    , DWT->CYCCNT - elapsed_time
-                #endif
+#if defined ELAPSED_TIME
+                        , DWT->CYCCNT - elapsed_time
+#endif
                 );
             } else {
                 // CRC invalid - report error
                 ds18b20_temp_ready(DS18B20_TEMP_ERROR_CRC_FAIL
-                #if defined ELAPSED_TIME
-                    , DWT->CYCCNT - elapsed_time
-                #endif
+#if defined ELAPSED_TIME
+                        , DWT->CYCCNT - elapsed_time
+#endif
                 );
             }
 
@@ -485,9 +503,9 @@ void ds18b20_poll(void) {
         default:
             // Unexpected state - report generic error
             ds18b20_temp_ready(DS18B20_TEMP_ERROR_GENERIC
-            #if defined ELAPSED_TIME
-                , DWT->CYCCNT - elapsed_time
-            #endif
+#if defined ELAPSED_TIME
+                    , DWT->CYCCNT - elapsed_time
+#endif
             );
             // Return to IDLE state
             ctx.current_state = 0;

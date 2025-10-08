@@ -5,7 +5,7 @@
 #include "TimDriver.hpp"
 #include "UsartDriver.hpp"
 
-#include "ds18b20.hpp"
+#include "ds18b20.h"
 #include "Controller.hpp"
 
 using namespace RccDriver;
@@ -88,7 +88,7 @@ void Tim17Callback() {
 
 int main() {
     InitMax48MHz();
-    InitMCO(); // MCO connected to R9 resistor (PA8-pin)
+    //InitMCO(); // MCO connected to R9 resistor (PA8-pin)
     InitSysTickUs(1000, SystemCoreClock);
 
     static Button<> BtnS1(GPIOA, 1);
@@ -131,7 +131,7 @@ int main() {
     tim17.setCallback(Tim17Callback);
     tim17.Start();
 
-    //ds18b20_init();
+    ds18b20_init();
 
     static HT1621B disp;
     disp_ptr = &disp;
@@ -139,12 +139,9 @@ int main() {
     disp_ptr->ShowDigit(4, 0, false);
     disp_ptr->ShowInt(25, true);
 
-    /*
     for (;;) {            // Main event loop (non-blocking, cooperative multitasking)
         ds18b20_poll();   // Poll DS18B20 state machine - advances 1-Wire communication state
-        Usart1.poll_tx(); // Poll UART transmission - feeds hardware from buffer
+        // Usart1.poll_tx(); // Poll UART transmission - feeds hardware from buffer
         // Other non-blocking tasks can be added here
     }
-     */
-    while (true) {}
 }
