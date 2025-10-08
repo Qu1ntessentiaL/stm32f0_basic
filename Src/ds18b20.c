@@ -1,4 +1,6 @@
 #include "ds18b20.h"
+#include "stm32f0xx.h"
+#include "macro.h"
 
 /**
  * @defgroup DS18B20_Private_Types DS18B20 Private Types
@@ -12,11 +14,11 @@
 typedef struct {
     union {
         volatile uint16_t edge[36];       /**< Edge timestamps for presence detection */
-        volatile uint8_t pulse[72];      /**< Pulse durations for data decoding */
-        uint8_t scratchpad[9];  /**< Sensor scratchpad data */
-        uint64_t fill_union;     /**< Utility field for filling the union */
+        volatile uint8_t  pulse[72];      /**< Pulse durations for data decoding */
+        uint8_t           scratchpad[9];  /**< Sensor scratchpad data */
+        uint64_t          fill_union;     /**< Utility field for filling the union */
     };
-    uint8_t current_state;  /**< Current state of the state machine */
+    uint8_t               current_state;  /**< Current state of the state machine */
 } DS18B20_ctx_t;
 
 /**
@@ -40,48 +42,48 @@ static DS18B20_ctx_t ctx;
  * @{
  */
 
-/** @brief Timer configuration for 1µs resolution (48MHz system clock / 48 = 1MHz) */
+/** @brief Timer configuration for 1µs resolution (72MHz system clock / 72 = 1MHz) */
 #define TIM_PRESCALER           47
 /** @brief Minimum reset pulse duration in microseconds */
-#define RESET_PULSE_MIN       480U
+#define RESET_PULSE_MIN       480U        
 /** @brief Maximum reset pulse duration in microseconds */
-#define RESET_PULSE_MAX       540U
+#define RESET_PULSE_MAX       540U        
 /** @brief Minimum presence pulse positive width in microseconds */
-#define POSITIVE_WIDTH_MIN     15U
+#define POSITIVE_WIDTH_MIN     15U        
 /** @brief Maximum presence pulse positive width in microseconds */
-#define POSITIVE_WIDTH_MAX     60U
+#define POSITIVE_WIDTH_MAX     60U        
 /** @brief Minimum presence pulse negative width in microseconds */
-#define NEGATIVE_WIDTH_MIN     60U
+#define NEGATIVE_WIDTH_MIN     60U        
 /** @brief Maximum presence pulse negative width in microseconds */
-#define NEGATIVE_WIDTH_MAX    240U
+#define NEGATIVE_WIDTH_MAX    240U        
 /** @brief Calculated minimum presence pulse timing */
 #define PRESENCE_PULSE_MIN   (RESET_PULSE_MIN + POSITIVE_WIDTH_MIN + NEGATIVE_WIDTH_MIN)
 /** @brief Calculated maximum presence pulse timing */
 #define PRESENCE_PULSE_MAX   (RESET_PULSE_MAX + POSITIVE_WIDTH_MAX + NEGATIVE_WIDTH_MAX)
 /** @brief Duration to drive bus low during reset in microseconds */
-#define RESET_PULSE_DURATION   RESET_PULSE_MIN
+#define RESET_PULSE_DURATION   RESET_PULSE_MIN  
 /** @brief Total reset timeslot timeout in microseconds */
-#define RESET_TIMEOUT          (RESET_PULSE_MIN * 2)
+#define RESET_TIMEOUT          (RESET_PULSE_MIN * 2) 
 /** @brief CRC8 polynomial for DS18B20 scratchpad validation (Dallas/Maxim algorithm) */
-#define DS18B20_CRC8_POLY     0x8C
+#define DS18B20_CRC8_POLY     0x8C        
 /** @brief Number of bytes to include in CRC calculation */
-#define DS18B20_CRC8_BYTES       8
+#define DS18B20_CRC8_BYTES       8        
 /** @brief Size of edge capture buffer for presence detection */
-#define CAPTURE_BUF_SIZE         2
+#define CAPTURE_BUF_SIZE         2        
 /** @brief Duration of '1' bit pulse in microseconds */
-#define ONE_PULSE                1
+#define ONE_PULSE                1        
 /** @brief Duration of '0' bit pulse in microseconds */
-#define ZERO_PULSE              60
+#define ZERO_PULSE              60        
 /** @brief Total length of DS18B20 scratchpad in bytes */
-#define DS18B20_SCRATCHPAD_LEN   9
+#define DS18B20_SCRATCHPAD_LEN   9        
 /** @brief Standard 8 bits per byte */
-#define DS18B20_BITS_PER_BYTE    8
+#define DS18B20_BITS_PER_BYTE    8        
 /** @brief Total number of bits in DS18B20 scratchpad */
 #define DS18B20_SCRATCHPAD_BITS (DS18B20_SCRATCHPAD_LEN * DS18B20_BITS_PER_BYTE)
 /** @brief Threshold to distinguish short/long pulses (10µs) */
-#define SHORT_PULSE_MAX       0x0A
+#define SHORT_PULSE_MAX       0x0A        
 /** @brief Number of DMA transfers for command transmission */
-#define DS18B20_DMA_TRANSFERS   16
+#define DS18B20_DMA_TRANSFERS   16        
 
 /**
  * @brief Convert byte bit to pulse duration (1µs for '1', 60µs for '0')
@@ -100,26 +102,20 @@ static DS18B20_ctx_t ctx;
     B2P(B, 4), B2P(B, 5), B2P(B, 6), B2P(B, 7)
 
 /** @brief DS18B20 Convert T command sequence in pulse duration format */
-static const uint8_t conv_cmd[] = {BYTE_TO_PULSES(0xCC), BYTE_TO_PULSES(0x44), 0};
+static const uint8_t conv_cmd[] = { BYTE_TO_PULSES(0xCC), BYTE_TO_PULSES(0x44), 0 };
 
 /** @brief DS18B20 Read Scratchpad command sequence in pulse duration format */
-static const uint8_t read_cmd[] = {BYTE_TO_PULSES(0xCC), BYTE_TO_PULSES(0xBE), 0};
+static const uint8_t read_cmd[] = { BYTE_TO_PULSES(0xCC), BYTE_TO_PULSES(0xBE), 0 };
 
 /**
  * @brief Force timer update event and wait for update flag - used for timer initialization
- * @param tim Timer register structure
+ * @param T Timer register structure
  */
-static inline void ForceUpdateEvent(TIM_TypeDef *tim) {
-    // Сгенерировать событие обновления
-    tim->EGR = TIM_EGR_UG;
-
-    // Подождать, пока UIF установится
-    while (!(tim->SR & TIM_SR_UIF));
-
-    // Сбросить флаг UIF
-    tim->SR &= ~TIM_SR_UIF;
-    __DSB();
-}
+#define FORCE_UPDATE_EVENT(T) do { \
+    (T).EGR = TIM_EGR(UG); \
+    while(!((T).SR & TIM_SR(UIF))); \
+    (T).SR &= ~TIM_SR(UIF); \
+} while(0)
 
 static inline void PA8_to_TIM1_CH1_AF2(void) {
     // 1. Включаем тактирование GPIOA
@@ -158,7 +154,7 @@ static inline void PA8_to_TIM1_CH1_AF2(void) {
  * @param[in] action 0 to turn LED off, non-zero to turn LED on
  */
 __WEAK void ds18b20_led_control(unsigned action) {
-    (void) action;
+    (void)action;
     // Default implementation - empty (no LED control)
 }
 
@@ -170,10 +166,9 @@ __WEAK void ds18b20_led_control(unsigned action) {
 __WEAK void ds18b20_temp_ready(int16_t temp_tenths, uint32_t t) {
     (void)t;
 #else
-
 __WEAK void ds18b20_temp_ready(int16_t temp_tenths) {
 #endif
-    (void) temp_tenths;
+    (void)temp_tenths;
     // Default implementation - empty (no temperature handling)
 }
 
@@ -223,7 +218,7 @@ __STATIC_FORCEINLINE void decode_scratchpad(void) {
  */
 __STATIC_FORCEINLINE int16_t decode_temperature(void) {
     // Combine LSB and MSB of temperature register (bytes 0 and 1)
-    int16_t raw = (int16_t) ((ctx.scratchpad[1] << 8) | ctx.scratchpad[0]);
+    int16_t raw = (int16_t)((ctx.scratchpad[1] << 8) | ctx.scratchpad[0]);
     // Convert to tenths of degrees Celsius (raw value in 1/16th degrees)
     // Multiply by 10 then divide by 16 to get value in tenths of degree
     return (raw * 10) / 16;
@@ -246,12 +241,11 @@ __STATIC_FORCEINLINE unsigned check_presence(void) {
  * @param[in] rcr Repetition counter value
  */
 __STATIC_FORCEINLINE void start_timer(uint16_t arr, uint8_t rcr) {
-    TIM1->ARR = arr;
-    TIM1->RCR = rcr;
+    T1.ARR = arr; T1.RCR = rcr;
     // Force update event to load new values
-    ForceUpdateEvent(TIM1);
+    FORCE_UPDATE_EVENT(T1);
     // Start timer in One Pulse Mode (OPM) - runs once then stops
-    TIM1->CR1 |= TIM_CR1_OPM | TIM_CR1_CEN;
+    T1.CR1 = TIM_CR1(OPM, CEN);
 }
 
 /**
@@ -271,26 +265,24 @@ __STATIC_FORCEINLINE void start_cycle_pause(void) { start_timer(62500, 79); }
  */
 __STATIC_FORCEINLINE void reset_bus(void) {
     // Configure timer for reset pulse generation (480µs low)
-    TIM1->ARR = RESET_TIMEOUT;              // Total reset slot time (960µs)
-    TIM1->CCR1 = RESET_PULSE_DURATION;       // Reset pulse duration (480µs)
+    T1.ARR  = RESET_TIMEOUT;              // Total reset slot time (960µs)
+    T1.CCR1 = RESET_PULSE_DURATION;       // Reset pulse duration (480µs)
     // Configure channel 1 for output compare (drive bus low)
     // Configure channel 2 for input capture (detect presence pulse)
-    TIM1->CCMR1 |= TIM_CCMR1_OC1M_0 | TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1PE |
-                   TIM_CCMR1_CC2S_1 | TIM_CCMR1_IC2F_0 | TIM_CCMR1_IC2F_1 | TIM_CCMR1_IC2F_2;
-    TIM1->CCER |= TIM_CCER_CC1E | TIM_CCER_CC2E;      // Enable both channels
-    TIM1->RCR = 0;                         // No repetition
+    T1.CCMR1 = TIM_CCMR1(OC1M_0,OC1M_1,OC1M_2,OC1PE, CC2S_1, IC2F_0,IC2F_1,IC2F_2);
+    T1.CCER  = TIM_CCER(CC1E, CC2E);      // Enable both channels
+    T1.RCR   = 0;                         // No repetition
     // Configure DMA to capture presence pulse edge timestamps
-    DMA1_Channel3->CCR = 0;                         // Clear DMA configuration
-    DMA1_Channel3->CPAR = (uint32_t) &TIM1->CCR2;        // DMA destination: timer capture register
-    DMA1_Channel3->CMAR = (uint32_t) ctx.edge;        // DMA source: edge timestamp buffer
-    DMA1_Channel3->CNDTR = CAPTURE_BUF_SIZE;          // Number of transfers (2 edges)
-    DMA1_Channel3->CCR |= DMA_CCR_MINC | DMA_CCR_PSIZE_0 |
-                          DMA_CCR_MSIZE_0 | DMA_CCR_EN; // Enable DMA with memory increment
+    D13.CCR  = 0;                         // Clear DMA configuration
+    D13.CPAR = (uint32_t)&T1.CCR2;        // DMA destination: timer capture register
+    D13.CMAR = (uint32_t)ctx.edge;        // DMA source: edge timestamp buffer
+    D13.CNDTR= CAPTURE_BUF_SIZE;          // Number of transfers (2 edges)
+    D13.CCR  = DMA_CCR(MINC, PSIZE_0, MSIZE_0, EN); // Enable DMA with memory increment
     // Force timer update to load configuration
-    ForceUpdateEvent(TIM1);
-    TIM1->CCR1 = 0;                          // Clear output compare value
-    TIM1->DIER |= TIM_DIER_CC2DE;            // Enable DMA request on capture
-    TIM1->CR1 |= TIM_CR1_OPM | TIM_CR1_CEN;          // Start timer in one-pulse mode
+    FORCE_UPDATE_EVENT(T1);
+    T1.CCR1 = 0;                          // Clear output compare value
+    T1.DIER = TIM_DIER(CC2DE);            // Enable DMA request on capture
+    T1.CR1  = TIM_CR1(OPM, CEN);          // Start timer in one-pulse mode
 }
 
 /**
@@ -300,23 +292,23 @@ __STATIC_FORCEINLINE void reset_bus(void) {
  */
 __STATIC_FORCEINLINE void send_command(const uint8_t *cmd) {
     // Configure timer for command transmission using DMA
-    TIM1->RCR = DS18B20_DMA_TRANSFERS - 1;   // Number of repetitions (16 transfers)
-    TIM1->ARR = ONE_PULSE + ZERO_PULSE + 1;  // Total bit slot time (62µs)
-    TIM1->CCR1 = cmd[0];                     // First pulse duration
-    TIM1->CCR2 = ONE_PULSE + ZERO_PULSE;     // Update trigger time
+    T1.RCR = DS18B20_DMA_TRANSFERS - 1;   // Number of repetitions (16 transfers)
+    T1.ARR = ONE_PULSE + ZERO_PULSE + 1;  // Total bit slot time (62µs)
+    T1.CCR1 = cmd[0];                     // First pulse duration
+    T1.CCR4 = ONE_PULSE + ZERO_PULSE;     // Update trigger time
     // Configure channel 1 for output compare mode
-    TIM1->CCMR1 |= TIM_CCMR1_OC1M_0 | TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1M_2;
-    TIM1->CCER |= TIM_CCER_CC1E;             // Enable output compare
-    TIM1->DIER |= TIM_DIER_CC2DE;            // Enable DMA request on update
+    T1.CCMR1 = TIM_CCMR1(OC1M_0,OC1M_1,OC1M_2);
+    T1.CCER = TIM_CCER(CC1E);             // Enable output compare
+    T1.DIER = TIM_DIER(CC4DE);            // Enable DMA request on update
     // Force timer update to load configuration
-    ForceUpdateEvent(TIM1);
+    FORCE_UPDATE_EVENT(T1);
     // Configure DMA to transmit command pulse sequence
-    DMA1_Channel2->CCR = 0;                          // Clear DMA configuration
-    DMA1_Channel2->CPAR = (uint32_t) &TIM1->CCR1;     // DMA destination: output compare register
-    DMA1_Channel2->CMAR = (uint32_t) &cmd[1];         // DMA source: command data (skip first byte)
-    DMA1_Channel2->CNDTR = DS18B20_DMA_TRANSFERS;    // Number of transfers
-    DMA1_Channel2->CCR |= DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_0 | DMA_CCR_EN; // Enable DMA with memory increment
-    TIM1->CR1 |= TIM_CR1_OPM | TIM_CR1_CEN;           // Start timer in one-pulse mode
+    D14.CCR = 0;                          // Clear DMA configuration
+    D14.CPAR = (uint32_t)&TIM1->CCR1;     // DMA destination: output compare register
+    D14.CMAR = (uint32_t)&cmd[1];         // DMA source: command data (skip first byte)
+    D14.CNDTR = DS18B20_DMA_TRANSFERS;    // Number of transfers
+    D14.CCR = DMA_CCR(DIR, MINC, PSIZE_0, EN); // Enable DMA with memory increment
+    T1.CR1 = TIM_CR1(OPM, CEN);           // Start timer in one-pulse mode
 }
 
 /**
@@ -325,25 +317,24 @@ __STATIC_FORCEINLINE void send_command(const uint8_t *cmd) {
  */
 __STATIC_FORCEINLINE void read_data(void) {
     // Configure timer for data reading with input capture
-    TIM1->RCR = DS18B20_SCRATCHPAD_BITS - 1; // Number of repetitions (72 bits)
-    TIM1->ARR = ONE_PULSE + ZERO_PULSE + 1;  // Total bit slot time (62µs)
-    TIM1->CCR1 = ONE_PULSE;                  // Read pulse duration (1µs)
+    T1.RCR = DS18B20_SCRATCHPAD_BITS - 1; // Number of repetitions (72 bits)
+    T1.ARR = ONE_PULSE + ZERO_PULSE + 1;  // Total bit slot time (62µs)
+    T1.CCR1 = ONE_PULSE;                  // Read pulse duration (1µs)
     // Configure channel 1 for output compare (generate read pulse)
     // Configure channel 2 for input capture (measure return pulse durations)
-    TIM1->CCMR1 |= TIM_CCMR1_OC1M_0 | TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1PE |
-                   TIM_CCMR1_CC2S_1 | TIM_CCMR1_IC2F_0 | TIM_CCMR1_IC2F_1 | TIM_CCMR1_IC2F_2;
-    TIM1->CCER |= TIM_CCER_CC1E | TIM_CCER_CC2E;       // Enable both channels
-    TIM1->DIER |= TIM_DIER_CC2DE;            // Enable DMA request on capture
+    T1.CCMR1 = TIM_CCMR1(OC1M_0,OC1M_1,OC1M_2,OC1PE, CC2S_1,IC2F_0,IC2F_1,IC2F_2);
+    T1.CCER = TIM_CCER(CC1E, CC2E);       // Enable both channels
+    T1.DIER = TIM_DIER(CC2DE);            // Enable DMA request on capture
     // Force timer update to load configuration
-    ForceUpdateEvent(TIM1);
-    TIM1->CCR1 = 0;                          // Clear output compare value
+    FORCE_UPDATE_EVENT(T1);
+    T1.CCR1 = 0;                          // Clear output compare value
     // Configure DMA to capture pulse durations into pulse buffer
-    DMA1_Channel3->CCR = 0;                          // Clear DMA configuration
-    DMA1_Channel3->CPAR = (uint32_t) &TIM1->CCR2;        // DMA destination: capture register
-    DMA1_Channel3->CMAR = (uint32_t) ctx.pulse;       // DMA source: pulse duration buffer
-    DMA1_Channel3->CNDTR = DS18B20_SCRATCHPAD_BITS;   // Number of transfers (72 bits)
-    DMA1_Channel3->CCR |= DMA_CCR_MINC | DMA_CCR_PSIZE_0 | DMA_CCR_EN; // Enable DMA with memory increment
-    TIM1->CR1 |= TIM_CR1_OPM | TIM_CR1_CEN;           // Start timer in one-pulse mode
+    D13.CCR = 0;                          // Clear DMA configuration
+    D13.CPAR = (uint32_t)&T1.CCR2;        // DMA destination: capture register
+    D13.CMAR = (uint32_t)ctx.pulse;       // DMA source: pulse duration buffer
+    D13.CNDTR= DS18B20_SCRATCHPAD_BITS;   // Number of transfers (72 bits)
+    D13.CCR = DMA_CCR(MINC, PSIZE_0, EN); // Enable DMA with memory increment
+    T1.CR1 = TIM_CR1(OPM, CEN);           // Start timer in one-pulse mode
 }
 
 /**
@@ -359,13 +350,13 @@ __STATIC_FORCEINLINE void read_data(void) {
  * @brief Initialize DS18B20 driver - configure clocks and peripherals
  */
 void ds18b20_init(void) {
-    // Enable clocks for required peripherals: TIM1, DMA1
-    RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
-    RCC->AHBENR |= RCC_AHBENR_DMA1EN;
+    // Enable clocks for required peripherals: GPIOA, TIM1, DMA1
+    R.APB2ENR |= RCC_APB2ENR(TIM1EN);
+    R.AHBENR  |= RCC_AHBENR(GPIOAEN, DMA1EN);
     // Configure timer prescaler for 1µs resolution (72MHz/72 = 1MHz)
-    TIM1->PSC = TIM_PRESCALER;
-    TIM1->EGR |= TIM_EGR_UG;
-    TIM1->BDTR |= TIM_BDTR_MOE;
+    T1.PSC     = TIM_PRESCALER;
+    T1.EGR     = TIM_EGR(UG);
+    T1.BDTR    = TIM_BDTR(MOE);
     // Configure PA8 for 1-Wire communication (alternate function open drain)
     PA8_to_TIM1_CH1_AF2();
 }
@@ -377,24 +368,24 @@ void ds18b20_init(void) {
  */
 void ds18b20_poll(void) {
 
-#if defined ELAPSED_TIME
-    static uint32_t elapsed_time;
-#endif
+    #if defined ELAPSED_TIME
+        static uint32_t elapsed_time;
+    #endif
 
     // Check if timer update interrupt occurred (indicates operation completion)
     // This is the non-blocking way to detect when timed operations finish
-    if (!(TIM1->SR & TIM_SR_UIF)) return;
+    if (!(TIM1->SR & TIM_SR(UIF))) return;
     // Clear timer update interrupt flag
     TIM1->SR = 0;
 
     // State machine to manage 1-Wire communication sequence
     switch (ctx.current_state) {
         case 0: // IDLE - Initialize for new measurement cycle
-#if defined ELAPSED_TIME
-            elapsed_time = DWT->CYCCNT;
-#endif
+             #if defined ELAPSED_TIME
+                 elapsed_time = DWT->CYCCNT;
+             #endif
             // Initialize union memory (fills with 0xFF pattern)
-            ctx.fill_union = (uint64_t) -1;
+            ctx.fill_union = (uint64_t)-1;
             // Transition to START state
             ctx.current_state = 1;
             /* fallthrough to START state immediately */
@@ -419,9 +410,9 @@ void ds18b20_poll(void) {
             } else {
                 // No device present - report error and pause
                 ds18b20_temp_ready(DS18B20_TEMP_ERROR_NO_SENSOR
-#if defined ELAPSED_TIME
-                        , DWT->CYCCNT - elapsed_time
-#endif
+                #if defined ELAPSED_TIME
+                    , DWT->CYCCNT - elapsed_time
+                #endif
                 );
                 // Start inter-measurement pause
                 start_cycle_pause();
@@ -454,9 +445,9 @@ void ds18b20_poll(void) {
             } else {
                 // No device present - report error and pause
                 ds18b20_temp_ready(DS18B20_TEMP_ERROR_NO_SENSOR
-#if defined ELAPSED_TIME
-                        , DWT->CYCCNT - elapsed_time
-#endif
+                #if defined ELAPSED_TIME
+                    , DWT->CYCCNT - elapsed_time
+                #endif
                 );
                 // Start inter-measurement pause
                 start_cycle_pause();
@@ -482,16 +473,16 @@ void ds18b20_poll(void) {
             if (ctx.scratchpad[8] == check_scratchpad_crc()) {
                 // CRC valid - decode and report temperature
                 ds18b20_temp_ready(decode_temperature()
-#if defined ELAPSED_TIME
-                        , DWT->CYCCNT - elapsed_time
-#endif
+                #if defined ELAPSED_TIME
+                    , DWT->CYCCNT - elapsed_time
+                #endif
                 );
             } else {
                 // CRC invalid - report error
                 ds18b20_temp_ready(DS18B20_TEMP_ERROR_CRC_FAIL
-#if defined ELAPSED_TIME
-                        , DWT->CYCCNT - elapsed_time
-#endif
+                #if defined ELAPSED_TIME
+                    , DWT->CYCCNT - elapsed_time
+                #endif
                 );
             }
 
@@ -504,9 +495,9 @@ void ds18b20_poll(void) {
         default:
             // Unexpected state - report generic error
             ds18b20_temp_ready(DS18B20_TEMP_ERROR_GENERIC
-#if defined ELAPSED_TIME
-                    , DWT->CYCCNT - elapsed_time
-#endif
+            #if defined ELAPSED_TIME
+                , DWT->CYCCNT - elapsed_time
+            #endif
             );
             // Return to IDLE state
             ctx.current_state = 0;

@@ -23,7 +23,6 @@
 #define DS18B20_H
 
 #include <stdint.h>
-#include "stm32f0xx.h"
 
 #ifdef __cplusplus
 extern "C" {
