@@ -52,7 +52,6 @@ static inline void ftoa_simple(double val, char *buf, uint8_t decimals) {
 
     *buf = '\0';
 }
-*/
 
 static inline void ftoa_simple_f(float val, char *buf, uint8_t decimals) {
     if (val < 0) {
@@ -82,6 +81,7 @@ static inline void ftoa_simple_f(float val, char *buf, uint8_t decimals) {
 
     *buf = '\0';
 }
+*/
 
 HT1621B::HT1621B() : m_cs_pin(GPIOB, 5),
                      m_write_pin(GPIOB, 4),
@@ -293,6 +293,13 @@ void HT1621B::ShowInt(int value, bool flushNow) {
     if (flushNow) Flush();
 }
 
+void HT1621B::ShowChargeLevel(uint8_t level, bool flushNow) {
+    if (level > 3) level = 0;
+    SetData(26, chargeLevels[level][0]);
+    SetData(27, chargeLevels[level][1]);
+    if (flushNow) Flush();
+}
+
 // Расходует очень много Flash
 /*
 void HT1621B::ShowDouble(double value, uint8_t decimals, bool flushNow) {
@@ -339,7 +346,6 @@ void HT1621B::ShowDouble(double value, uint8_t decimals, bool flushNow) {
 
     if (flushNow) Flush();
 }
-*/
 
 void HT1621B::ShowFloat(float value, uint8_t decimals, bool flushNow) {
     char buf[16];
@@ -384,10 +390,4 @@ void HT1621B::ShowFloat(float value, uint8_t decimals, bool flushNow) {
 
     if (flushNow) Flush();
 }
-
-void HT1621B::ShowChargeLevel(uint8_t level, bool flushNow) {
-    if (level > 3) level = 0;
-    SetData(26, chargeLevels[level][0]);
-    SetData(27, chargeLevels[level][1]);
-    if (flushNow) Flush();
-}
+*/

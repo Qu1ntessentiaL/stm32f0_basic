@@ -77,9 +77,13 @@ int main() {
     tim17.setCallback(Tim17Callback);
     tim17.Start();
 
-    hardware_init(); // Initialize hardware peripherals (non-blocking)
-    uart_write_str("DS18B20 demo starting...\r\n"); // Enqueue startup message to UART buffer
+    //hardware_init(); // Initialize hardware peripherals (non-blocking)
+    //uart_write_str("DS18B20 demo starting...\r\n"); // Enqueue startup message to UART buffer
     ds18b20_init();  // Initialize DS18B20 driver (non-blocking)
+
+    UsartDriver Usart1;
+    Usart1.Init(SystemCoreClock);
+    Usart1.write_str("1234");
 
     static HT1621B disp;
     disp_ptr = &disp;
@@ -89,7 +93,8 @@ int main() {
 
     for (;;) {            // Main event loop (non-blocking, cooperative multitasking)
         ds18b20_poll();   // Poll DS18B20 state machine - advances 1-Wire communication state
-        uart_poll_tx(); // Poll UART transmission - feeds hardware from buffer
+        //uart_poll_tx(); // Poll UART transmission - feeds hardware from buffer
         // Other non-blocking tasks can be added here
+        Usart1.poll_tx();
     }
 }
