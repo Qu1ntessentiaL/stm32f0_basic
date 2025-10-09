@@ -77,24 +77,36 @@ void uart_poll_tx(void) {
  * @brief Initialize microcontroller peripherals for UART communication and LED control
  */
 void hardware_init(void) {
+    /* --- 1. Включаем тактирование --- */
+    RCC->AHBENR |= RCC_AHBENR_GPIOAEN;    // GPIOA
+    RCC->APB2ENR |= RCC_APB2ENR_USART1EN; // USART1
 
-    // Enable clock for GPIOA, USART1, and GPIOC peripherals
-    RCC->APB2ENR |= RCC_APB2ENR_USART1EN;
-    RCC->AHBENR |= RCC_AHBENR_GPIOAEN | RCC_AHBENR_GPIOCEN;
+    /* --- 2. Настраиваем пины PA9 (TX) и PA10 (RX) --- */
+    GPIOA->MODER &= ~((3U << (9 * 2)) | (3U << (10 * 2))); // Сбрасываем режим
+    GPIOA->MODER |= ((2U << (9 * 2)) | (2U << (10 * 2))); // Alternate function
 
-    // Configure PA9 as alternate function push-pull output, 2MHz speed
-    // Clear existing configuration bits
-    // GPIOA->CRH &= ~(GPIO_CRH_MODE9 | GPIO_CRH_CNF9);
-    // Set alternate function push-pull output mode, 2MHz speed
-    // GPIOA->CRH |= (GPIO_CRH_MODE9_1 | GPIO_CRH_CNF9_1);
+    GPIOA->AFR[1] &= ~((0xF << ((9 - 8) * 4)) | (0xF << ((10 - 8) * 4)));
+    GPIOA->AFR[1] |= ((1U << ((9 - 8) * 4)) | (1U << ((10 - 8) * 4))); // AF1 = USART1
 
-    // Configure PC13 as general purpose output, 2MHz speed for LED control
-    // GPIOC->CRH &= ~(GPIO_CRH_MODE13 | GPIO_CRH_CNF13);
-    // GPIOC->CRH |= GPIO_CRH_MODE13_1;
+    GPIOA->OSPEEDR |= ((3U << (9 * 2)) | (3U << (10 * 2))); // High speed
+    GPIOA->OTYPER &= ~((1U << 9) | (1U << 10));             // Push-pull
+    GPIOA->PUPDR &= ~((3U << (9 * 2)) | (3U << (10 * 2))); // No pull
 
-    // Configure USART1: 115200 baud, 8 data bits, no parity, 1 stop bit, TX only
-    USART1->BRR = USART_BRR_CALC(48000000, 115200); // PCLK2 = 48MHz
-    USART1->CR1 = USART_CR1_TE | USART_CR1_UE;      // Enable USART1; TX enable only
+    /* --- 3. Настраиваем USART1 --- */
+    USART1->CR1 = 0; // Сбрасываем на всякий случай
+
+    // Baud rate: 48 MHz / 115200 = 416.666 → BRR ≈ 417
+    USART1->BRR = 417U;
+
+    // 8 бит, без чётности, 1 стоп, без flow control
+    USART1->CR1 |= USART_CR1_TE | USART_CR1_RE; // Включаем TX и RX
+
+    /* --- 4. Включаем USART --- */
+    USART1->CR1 |= USART_CR1_UE;
+
+    /* --- 5. Ждём готовности --- */
+    while (!(USART1->ISR & USART_ISR_TEACK));
+    while (!(USART1->ISR & USART_ISR_REACK));
 }
 
 /**
@@ -154,25 +166,25 @@ void ds18b20_temp_ready(int16_t temp, uint32_t t) {
 
 void ds18b20_temp_ready(int16_t temp) {
 #endif
-    if (temp == DS18B20_TEMP_ERROR_NO_SENSOR) {  // No sensor detected error - enqueue error message
+    if (temp == DS18B20_TEMP_ERROR_NO_SENSOR) { // No sensor detected error - enqueue error message
         uart_write_str("DS18B20 error: no sensor detected.\r\n");
-    } else if (temp == DS18B20_TEMP_ERROR_CRC_FAIL) {  // CRC check failed error - enqueue error message
+    } else if (temp == DS18B20_TEMP_ERROR_CRC_FAIL) { // CRC check failed error - enqueue error message
         uart_write_str("DS18B20 error: CRC check failed.\r\n");
     } else if (temp == DS18B20_TEMP_ERROR_GENERIC) { // Generic error - enqueue error message
         uart_write_str("DS18B20 error: generic failure.\r\n");
-    } else {  // Valid temperature reading - format and display
-        int whole = temp / 10;      // Get whole degrees (temp is in tenths)
-        int frac = temp % 10;       // Get fractional part (tenths)
-        if (frac < 0) frac = -frac; // Ensure fractional part is positive
+    } else {                                 // Valid temperature reading - format and display
+        int whole = temp / 10;               // Get whole degrees (temp is in tenths)
+        int frac = temp % 10;                // Get fractional part (tenths)
+        if (frac < 0) frac = -frac;          // Ensure fractional part is positive
         uart_write_str("Temperature: ");
-        uart_write_int(whole);      // Display whole part
-        uart_write_str(".");        // Decimal point
-        uart_write_int(frac);       // Display fractional part
-        uart_write_str(" C");       // Units
+        uart_write_int(whole);          // Display whole part
+        uart_write_str(".");               // Decimal point
+        uart_write_int(frac);           // Display fractional part
+        uart_write_str(" C");              // Units
 #if defined ELAPSED_TIME
         uart_write_str(" (");   // Parenthesis
-            uart_write_int(t / 72); // Display time elapsed
-            uart_write_str(" us)"); // Parenthesis
+        uart_write_int(t / 72); // Display time elapsed
+        uart_write_str(" us)"); // Parenthesis
 #endif
         uart_write_str("\r\n");     // And newline
     }

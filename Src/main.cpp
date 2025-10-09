@@ -1,3 +1,12 @@
+/**
+ * I2C1_SDA [PB7] - R17
+ * I2C1_SCL [PB6] - R12
+ * UART1_RX [PA10] - X2.1
+ * UART1_TX [PA9] - X2.2
+ */
+
+#include "Scheduler.hpp"
+
 #include "GpioDriver.hpp"
 #include "GpioDriverCT.hpp"
 #include "Button.hpp"
@@ -20,20 +29,19 @@ void Tim17Callback() {
 
     switch (e1) {
         case Button<>::Event::Pressed:  // Действие при нажатии
-            disp_ptr->Clear();
-            disp_ptr->ShowLetter(5, 'h');
-            disp_ptr->ShowDigit(4, 1, false);
-            disp_ptr->ShowInt(30, true);
             break;
         case Button<>::Event::Held:     // Действие при удержании
             break;
         case Button<>::Event::Released: // Действие при отпускании
-            GPIOB->BSRR |= GPIO_BSRR_BR_0;
             break;
         default:
             break;
     }
 }
+
+void task_sensor() { ds18b20_poll(); }
+
+void task_uart() { uart_poll_tx(); }
 
 int main() {
     RccDriver::InitMax48MHz();
@@ -45,14 +53,7 @@ int main() {
             BtnS3(GPIOA, 3),
             BtnS4(GPIOA, 4);
 
-    UsartDriver Usart1;
-    UsartDriver<>::Init(SystemCoreClock);
-    /**
-     * I2C1_SDA [PB7] - R17
-     * I2C1_SCL [PB6] - R12
-     * UART1_RX [PA10] - X2.1
-     * UART1_TX [PA9] - X2.2
-     */
+    S1_Ptr = &BtnS1;
 
     GpioDriver sda(GPIOB, 7),
             scl(GPIOB, 6);
@@ -64,7 +65,7 @@ int main() {
             r18(GPIOA, 0),
             r20(GPIOA, 12);
 
-    GpioDriver light(GPIOB, 0),
+    static GpioDriver light(GPIOB, 0),
             buzzer(GPIOB, 1);
 
     light.Init(GpioDriver::Mode::Output,

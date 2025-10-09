@@ -11,7 +11,7 @@ template<uint8_t DebounceTicks = 5,
 class Button : public GpioDriver {
 public:
     Button(GPIO_TypeDef *port, uint8_t pin) : GpioDriver(port, pin) {
-        Init(Mode::Input);
+        Init(Mode::Input, OutType::OpenDrain, Pull::Up);
     }
 
     enum class State {

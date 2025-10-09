@@ -243,7 +243,6 @@ void HT1621B::ShowLetter(uint8_t position, char c, bool flushNow) {
         case 'S': segs = letters[15]; segCount = 4; break;
         case 't': segs = letters[16]; segCount = 3; break;
         case 'U': segs = letters[17]; segCount = 4; break;
-        case 'Y': segs = letters[18]; segCount = 4; break;
         case '-': segs = letters[19]; segCount = 1; break;
         case '_': segs = letters[20]; segCount = 1; break;
         default: return;
