@@ -2,6 +2,7 @@
 
 #include "stm32f0xx.h"
 #include "GpioDriver.hpp"
+#include "EventQueue.hpp"
 
 /**
  * @brief
@@ -77,4 +78,58 @@ public:
 private:
     State m_state = State::Idle;
     uint16_t m_counter = 0;
+};
+
+class Buttons {
+public:
+    Buttons(GPIO_TypeDef *portS1, uint8_t pinS1,
+            GPIO_TypeDef *portS2, uint8_t pinS2,
+            GPIO_TypeDef *portS3, uint8_t pinS3,
+            GPIO_TypeDef *portS4, uint8_t pinS4)
+            : btnS1(portS1, pinS1),
+              btnS2(portS2, pinS2),
+              btnS3(portS3, pinS3),
+              btnS4(portS4, pinS4) {}
+
+    void poll(EventQueue &queue) {
+        using BtnEvent = typename Button<>::Event;
+
+        auto eS1 = btnS1.tick();
+        if (eS1 == BtnEvent::Pressed)
+            queue.push({EventType::ButtonS1, 0});
+        else if (eS1 == BtnEvent::Held)
+            queue.push({EventType::ButtonS1, 1}); // Удержание
+        else if (eS1 == BtnEvent::Released)
+            queue.push({EventType::ButtonS1, 2});
+
+        auto eS2 = btnS2.tick();
+        if (eS2 == BtnEvent::Pressed)
+            queue.push({EventType::ButtonS2, 0});
+        else if (eS2 == BtnEvent::Held)
+            queue.push({EventType::ButtonS2, 1});
+        else if (eS2 == BtnEvent::Released)
+            queue.push({EventType::ButtonS2, 2});
+
+        auto eS3 = btnS3.tick();
+        if (eS3 == BtnEvent::Pressed)
+            queue.push({EventType::ButtonS3, 0});
+        else if (eS3 == BtnEvent::Held)
+            queue.push({EventType::ButtonS3, 1});
+        else if (eS3 == BtnEvent::Released)
+            queue.push({EventType::ButtonS3, 2});
+
+        auto eS4 = btnS4.tick();
+        if (eS4 == BtnEvent::Pressed)
+            queue.push({EventType::ButtonS4, 0});
+        else if (eS4 == BtnEvent::Held)
+            queue.push({EventType::ButtonS4, 1});
+        else if (eS4 == BtnEvent::Released)
+            queue.push({EventType::ButtonS4, 2});
+    }
+
+private:
+    Button<> btnS1;
+    Button<> btnS2;
+    Button<> btnS3;
+    Button<> btnS4;
 };
