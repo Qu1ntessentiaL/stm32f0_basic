@@ -5,11 +5,9 @@
 
 class ThermostatController {
 public:
-    void init() {
+    void init() {}
 
-    }
-
-    void processEvent(const Event &ev);
+    void processEvent(const Event &e) {}
 
 private:
     float setpoint_ = 25.0f;

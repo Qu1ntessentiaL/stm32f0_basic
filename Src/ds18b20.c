@@ -1,6 +1,5 @@
 #include "ds18b20.h"
 #include "stm32f0xx.h"
-#include "macro.h"
 
 /**
  * @defgroup DS18B20_Private_Types DS18B20 Private Types
@@ -107,15 +106,11 @@ static const uint8_t conv_cmd[] = {BYTE_TO_PULSES(0xCC), BYTE_TO_PULSES(0x44), 0
 /** @brief DS18B20 Read Scratchpad command sequence in pulse duration format */
 static const uint8_t read_cmd[] = {BYTE_TO_PULSES(0xCC), BYTE_TO_PULSES(0xBE), 0};
 
-/**
- * @brief Force timer update event and wait for update flag - used for timer initialization
- * @param T Timer register structure
- */
-#define FORCE_UPDATE_EVENT(T) do { \
-    (T).EGR = TIM_EGR(UG); \
-    while(!((T).SR & TIM_SR(UIF))); \
-    (T).SR &= ~TIM_SR(UIF); \
-} while(0)
+static inline void ForceUpdateEvent(TIM_TypeDef *tim) {
+    tim->EGR = TIM_EGR_UG;                 // Сгенерировать событие обновления
+    while (!(tim->SR & TIM_SR_UIF)) {}     // Дождаться флага обновления
+    tim->SR &= ~TIM_SR_UIF;                // Сбросить флаг
+}
 
 static inline void PA8_to_TIM1_CH1_AF2(void) {
     // 1. Включаем тактирование GPIOA
@@ -242,12 +237,12 @@ __STATIC_FORCEINLINE unsigned check_presence(void) {
  * @param[in] rcr Repetition counter value
  */
 __STATIC_FORCEINLINE void start_timer(uint16_t arr, uint8_t rcr) {
-    T1.ARR = arr;
-    T1.RCR = rcr;
+    TIM1->ARR = arr;
+    TIM1->RCR = rcr;
     // Force update event to load new values
-    FORCE_UPDATE_EVENT(T1);
+    ForceUpdateEvent(TIM1);
     // Start timer in One Pulse Mode (OPM) - runs once then stops
-    T1.CR1 = TIM_CR1(OPM, CEN);
+    TIM1->CR1 = TIM_CR1_OPM | TIM_CR1_CEN;
 }
 
 /**
@@ -267,24 +262,26 @@ __STATIC_FORCEINLINE void start_cycle_pause(void) { start_timer(62500, 79); }
  */
 __STATIC_FORCEINLINE void reset_bus(void) {
     // Configure timer for reset pulse generation (480µs low)
-    T1.ARR = RESET_TIMEOUT;              // Total reset slot time (960µs)
-    T1.CCR1 = RESET_PULSE_DURATION;       // Reset pulse duration (480µs)
+    TIM1->ARR = RESET_TIMEOUT;              // Total reset slot time (960µs)
+    TIM1->CCR1 = RESET_PULSE_DURATION;      // Reset pulse duration (480µs)
     // Configure channel 1 for output compare (drive bus low)
     // Configure channel 2 for input capture (detect presence pulse)
-    T1.CCMR1 = TIM_CCMR1(OC1M_0, OC1M_1, OC1M_2, OC1PE, CC2S_1, IC2F_0, IC2F_1, IC2F_2);
-    T1.CCER = TIM_CCER(CC1E, CC2E);      // Enable both channels
-    T1.RCR = 0;                         // No repetition
+    TIM1->CCMR1 = (TIM_CCMR1_OC1M_0 | TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1PE) |
+                  (TIM_CCMR1_CC2S_1 | TIM_CCMR1_IC2F_0 | TIM_CCMR1_IC2F_1 | TIM_CCMR1_IC2F_2);
+    TIM1->CCER = TIM_CCER_CC1E | TIM_CCER_CC2E;      // Enable both channels
+    TIM1->RCR = 0;                                  // No repetition
     // Configure DMA to capture presence pulse edge timestamps
-    D13.CCR = 0;                         // Clear DMA configuration
-    D13.CPAR = (uint32_t) &T1.CCR2;        // DMA destination: timer capture register
-    D13.CMAR = (uint32_t) ctx.edge;        // DMA source: edge timestamp buffer
-    D13.CNDTR = CAPTURE_BUF_SIZE;          // Number of transfers (2 edges)
-    D13.CCR = DMA_CCR(MINC, PSIZE_0, MSIZE_0, EN); // Enable DMA with memory increment
+    DMA1_Channel3->CCR = 0;                           // Clear DMA configuration
+    DMA1_Channel3->CPAR = (uint32_t) &TIM1->CCR2;      // DMA destination: timer capture register
+    DMA1_Channel3->CMAR = (uint32_t) ctx.edge;        // DMA source: edge timestamp buffer
+    DMA1_Channel3->CNDTR = CAPTURE_BUF_SIZE;          // Number of transfers (2 edges)
+    // Enable DMA with memory increment
+    DMA1_Channel3->CCR = DMA_CCR_MINC | DMA_CCR_PSIZE_0 | DMA_CCR_MSIZE_0 | DMA_CCR_EN;
     // Force timer update to load configuration
-    FORCE_UPDATE_EVENT(T1);
-    T1.CCR1 = 0;                          // Clear output compare value
-    T1.DIER = TIM_DIER(CC2DE);            // Enable DMA request on capture
-    T1.CR1 = TIM_CR1(OPM, CEN);          // Start timer in one-pulse mode
+    ForceUpdateEvent(TIM1);
+    TIM1->CCR1 = 0;                           // Clear output compare value
+    TIM1->DIER = TIM_DIER_CC2DE;              // Enable DMA request on capture
+    TIM1->CR1 = TIM_CR1_OPM | TIM_CR1_CEN;   // Start timer in one-pulse mode
 }
 
 /**
@@ -294,23 +291,24 @@ __STATIC_FORCEINLINE void reset_bus(void) {
  */
 __STATIC_FORCEINLINE void send_command(const uint8_t *cmd) {
     // Configure timer for command transmission using DMA
-    T1.RCR = DS18B20_DMA_TRANSFERS - 1;   // Number of repetitions (16 transfers)
-    T1.ARR = ONE_PULSE + ZERO_PULSE + 1;  // Total bit slot time (62µs)
-    T1.CCR1 = cmd[0];                     // First pulse duration
-    T1.CCR4 = ONE_PULSE + ZERO_PULSE;     // Update trigger time
+    TIM1->RCR = DS18B20_DMA_TRANSFERS - 1;   // Number of repetitions (16 transfers)
+    TIM1->ARR = ONE_PULSE + ZERO_PULSE + 1;  // Total bit slot time (62µs)
+    TIM1->CCR1 = cmd[0];                     // First pulse duration
+    TIM1->CCR4 = ONE_PULSE + ZERO_PULSE;     // Update trigger time
     // Configure channel 1 for output compare mode
-    T1.CCMR1 = TIM_CCMR1(OC1M_0, OC1M_1, OC1M_2);
-    T1.CCER = TIM_CCER(CC1E);             // Enable output compare
-    T1.DIER = TIM_DIER(CC4DE);            // Enable DMA request on update
+    TIM1->CCMR1 = TIM_CCMR1_OC1M_0 | TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1M_2;
+    TIM1->CCER = TIM_CCER_CC1E;             // Enable output compare
+    TIM1->DIER = TIM_DIER_CC4DE;            // Enable DMA request on update
     // Force timer update to load configuration
-    FORCE_UPDATE_EVENT(T1);
+    ForceUpdateEvent(TIM1);
     // Configure DMA to transmit command pulse sequence
-    D14.CCR = 0;                          // Clear DMA configuration
-    D14.CPAR = (uint32_t) &TIM1->CCR1;     // DMA destination: output compare register
-    D14.CMAR = (uint32_t) &cmd[1];         // DMA source: command data (skip first byte)
-    D14.CNDTR = DS18B20_DMA_TRANSFERS;    // Number of transfers
-    D14.CCR = DMA_CCR(DIR, MINC, PSIZE_0, EN); // Enable DMA with memory increment
-    T1.CR1 = TIM_CR1(OPM, CEN);           // Start timer in one-pulse mode
+    DMA1_Channel4->CCR = 0;                          // Clear DMA configuration
+    DMA1_Channel4->CPAR = (uint32_t) &TIM1->CCR1;    // DMA destination: output compare register
+    DMA1_Channel4->CMAR = (uint32_t) &cmd[1];        // DMA source: command data (skip first byte)
+    DMA1_Channel4->CNDTR = DS18B20_DMA_TRANSFERS;    // Number of transfers
+    // Enable DMA with memory increment
+    DMA1_Channel4->CCR = DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_0 | DMA_CCR_EN;
+    TIM1->CR1 = TIM_CR1_OPM | TIM_CR1_CEN;           // Start timer in one-pulse mode
 }
 
 /**
@@ -319,24 +317,25 @@ __STATIC_FORCEINLINE void send_command(const uint8_t *cmd) {
  */
 __STATIC_FORCEINLINE void read_data(void) {
     // Configure timer for data reading with input capture
-    T1.RCR = DS18B20_SCRATCHPAD_BITS - 1; // Number of repetitions (72 bits)
-    T1.ARR = ONE_PULSE + ZERO_PULSE + 1;  // Total bit slot time (62µs)
-    T1.CCR1 = ONE_PULSE;                  // Read pulse duration (1µs)
+    TIM1->RCR = DS18B20_SCRATCHPAD_BITS - 1; // Number of repetitions (72 bits)
+    TIM1->ARR = ONE_PULSE + ZERO_PULSE + 1;  // Total bit slot time (62µs)
+    TIM1->CCR1 = ONE_PULSE;                  // Read pulse duration (1µs)
     // Configure channel 1 for output compare (generate read pulse)
     // Configure channel 2 for input capture (measure return pulse durations)
-    T1.CCMR1 = TIM_CCMR1(OC1M_0, OC1M_1, OC1M_2, OC1PE, CC2S_1, IC2F_0, IC2F_1, IC2F_2);
-    T1.CCER = TIM_CCER(CC1E, CC2E);       // Enable both channels
-    T1.DIER = TIM_DIER(CC2DE);            // Enable DMA request on capture
+    TIM1->CCMR1 = (TIM_CCMR1_OC1M_0 | TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1PE) |
+                  (TIM_CCMR1_CC2S_1 | TIM_CCMR1_IC2F_0 | TIM_CCMR1_IC2F_1 | TIM_CCMR1_IC2F_2);
+    TIM1->CCER = TIM_CCER_CC1E | TIM_CCER_CC2E;   // Enable both channels
+    TIM1->DIER = TIM_DIER_CC2DE;                  // Enable DMA request on capture
     // Force timer update to load configuration
-    FORCE_UPDATE_EVENT(T1);
-    T1.CCR1 = 0;                          // Clear output compare value
+    ForceUpdateEvent(TIM1);
+    TIM1->CCR1 = 0;                          // Clear output compare value
     // Configure DMA to capture pulse durations into pulse buffer
-    D13.CCR = 0;                          // Clear DMA configuration
-    D13.CPAR = (uint32_t) &T1.CCR2;        // DMA destination: capture register
-    D13.CMAR = (uint32_t) ctx.pulse;       // DMA source: pulse duration buffer
-    D13.CNDTR = DS18B20_SCRATCHPAD_BITS;   // Number of transfers (72 bits)
-    D13.CCR = DMA_CCR(MINC, PSIZE_0, EN); // Enable DMA with memory increment
-    T1.CR1 = TIM_CR1(OPM, CEN);           // Start timer in one-pulse mode
+    DMA1_Channel3->CCR = 0;                                            // Clear DMA configuration
+    DMA1_Channel3->CPAR = (uint32_t) &TIM1->CCR2;                       // DMA destination: capture register
+    DMA1_Channel3->CMAR = (uint32_t) ctx.pulse;                        // DMA source: pulse duration buffer
+    DMA1_Channel3->CNDTR = DS18B20_SCRATCHPAD_BITS;                    // Number of transfers (72 bits)
+    DMA1_Channel3->CCR = DMA_CCR_MINC | DMA_CCR_PSIZE_0 | DMA_CCR_EN;  // Enable DMA with memory increment
+    TIM1->CR1 = TIM_CR1_OPM | TIM_CR1_CEN;   // Start timer in one-pulse mode
 }
 
 /**
@@ -353,12 +352,12 @@ __STATIC_FORCEINLINE void read_data(void) {
  */
 void ds18b20_init(void) {
     // Enable clocks for required peripherals: GPIOA, TIM1, DMA1
-    R.APB2ENR |= RCC_APB2ENR(TIM1EN);
-    R.AHBENR |= RCC_AHBENR(GPIOAEN, DMA1EN);
+    RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
+    RCC->AHBENR |= RCC_AHBENR_GPIOAEN | RCC_AHBENR_DMA1EN;
     // Configure timer prescaler for 1µs resolution (72MHz/72 = 1MHz)
-    T1.PSC = TIM_PRESCALER;
-    T1.EGR = TIM_EGR(UG);
-    T1.BDTR = TIM_BDTR(MOE);
+    TIM1->PSC = TIM_PRESCALER;
+    TIM1->EGR = TIM_EGR_UG;
+    TIM1->BDTR = TIM_BDTR_MOE;
     // Configure PA8 for 1-Wire communication (alternate function open drain)
     PA8_to_TIM1_CH1_AF2();
 }
@@ -376,7 +375,7 @@ void ds18b20_poll(void) {
 
     // Check if timer update interrupt occurred (indicates operation completion)
     // This is the non-blocking way to detect when timed operations finish
-    if (!(TIM1->SR & TIM_SR(UIF))) return;
+    if (!(TIM1->SR & TIM_SR_UIF)) return;
     // Clear timer update interrupt flag
     TIM1->SR = 0;
 
