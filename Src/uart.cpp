@@ -166,11 +166,11 @@ void ds18b20_temp_ready(int16_t temp, uint32_t t) {
 
 void ds18b20_temp_ready(int16_t temp) {
 #endif
-    if (temp == DS18B20_TEMP_ERROR_NO_SENSOR) { // No sensor detected error - enqueue error message
+    if (temp == DS18B20::ErrorStatus::TEMP_ERROR_NO_SENSOR) { // No sensor detected error - enqueue error message
         uart_write_str("DS18B20 error: no sensor detected.\r\n");
-    } else if (temp == DS18B20_TEMP_ERROR_CRC_FAIL) { // CRC check failed error - enqueue error message
+    } else if (temp == DS18B20::ErrorStatus::TEMP_ERROR_CRC_FAIL) { // CRC check failed error - enqueue error message
         uart_write_str("DS18B20 error: CRC check failed.\r\n");
-    } else if (temp == DS18B20_TEMP_ERROR_GENERIC) { // Generic error - enqueue error message
+    } else if (temp == DS18B20::ErrorStatus::TEMP_ERROR_GENERIC) { // Generic error - enqueue error message
         uart_write_str("DS18B20 error: generic failure.\r\n");
     } else {                                 // Valid temperature reading - format and display
         int whole = temp / 10;               // Get whole degrees (temp is in tenths)

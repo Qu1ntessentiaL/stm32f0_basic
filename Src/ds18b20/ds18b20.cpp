@@ -368,7 +368,7 @@ void DS18B20::poll() {
                 ctx.current_state = 3;
             } else {
                 // No device present - report error and pause
-                ds18b20_temp_ready(DS18B20_TEMP_ERROR_NO_SENSOR
+                ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_NO_SENSOR
 #if defined ELAPSED_TIME
                         , DWT->CYCCNT - elapsed_time
 #endif
@@ -403,7 +403,7 @@ void DS18B20::poll() {
                 ctx.current_state = 6;
             } else {
                 // No device present - report error and pause
-                ds18b20_temp_ready(DS18B20_TEMP_ERROR_NO_SENSOR
+                ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_NO_SENSOR
 #if defined ELAPSED_TIME
                         , DWT->CYCCNT - elapsed_time
 #endif
@@ -438,7 +438,7 @@ void DS18B20::poll() {
                 );
             } else {
                 // CRC invalid - report error
-                ds18b20_temp_ready(DS18B20_TEMP_ERROR_CRC_FAIL
+                ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_CRC_FAIL
 #if defined ELAPSED_TIME
                         , DWT->CYCCNT - elapsed_time
 #endif
@@ -453,7 +453,7 @@ void DS18B20::poll() {
 
         default:
             // Unexpected state - report generic error
-            ds18b20_temp_ready(DS18B20_TEMP_ERROR_GENERIC
+            ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_GENERIC
 #if defined ELAPSED_TIME
                     , DWT->CYCCNT - elapsed_time
 #endif
