@@ -1,5 +1,8 @@
 #include "ds18b20.hpp"
 
+#include <cstdint>
+#include <array>
+
 /**
  * @defgroup DS18B20_Private_Constants DS18B20 Private Constants
  * @{
@@ -33,10 +36,6 @@
 #define DS18B20_CRC8_BYTES       8
 /** @brief Size of edge capture buffer for presence detection */
 #define CAPTURE_BUF_SIZE         2
-/** @brief Duration of '1' bit pulse in microseconds */
-#define ONE_PULSE                1
-/** @brief Duration of '0' bit pulse in microseconds */
-#define ZERO_PULSE              60
 /** @brief Total length of DS18B20 scratchpad in bytes */
 #define DS18B20_SCRATCHPAD_LEN   9
 /** @brief Standard 8 bits per byte */
@@ -48,27 +47,37 @@
 /** @brief Number of DMA transfers for command transmission */
 #define DS18B20_DMA_TRANSFERS   16
 
-/**
- * @brief Convert byte bit to pulse duration (1µs for '1', 60µs for '0')
- * @param B Byte value
- * @param N Bit position (0-7)
- * @return Pulse duration in microseconds
- */
-#define B2P(B, N) (B) & (1 << N) ? ONE_PULSE : ZERO_PULSE
+// Константы для длительностей импульсов
+constexpr uint8_t ONE_PULSE  = 1;   // 1 µs
+constexpr uint8_t ZERO_PULSE = 60;  // 60 µs
 
-/**
- * @brief Convert entire byte to sequence of pulse durations for transmission
- * @param B Byte value to convert
- */
-#define BYTE_TO_PULSES(B) \
-    B2P(B, 0), B2P(B, 1), B2P(B, 2), B2P(B, 3),\
-    B2P(B, 4), B2P(B, 5), B2P(B, 6), B2P(B, 7)
+// Преобразование одного бита
+constexpr uint8_t bitToPulse(uint8_t byte, uint8_t bit) noexcept {
+    return (byte & (1u << bit)) ? ONE_PULSE : ZERO_PULSE;
+}
 
-/** @brief DS18B20 Convert T command sequence in pulse duration format */
-static const uint8_t conv_cmd[] = {BYTE_TO_PULSES(0xCC), BYTE_TO_PULSES(0x44), 0};
+// Преобразование байта в 8 длительностей
+constexpr std::array<uint8_t, 8> byteToPulses(uint8_t byte) noexcept {
+    std::array<uint8_t, 8> pulses{};
+    for (uint8_t i = 0; i < 8; ++i)
+        pulses[i] = bitToPulse(byte, i);
+    return pulses;
+}
 
-/** @brief DS18B20 Read Scratchpad command sequence in pulse duration format */
-static const uint8_t read_cmd[] = {BYTE_TO_PULSES(0xCC), BYTE_TO_PULSES(0xBE), 0};
+// Преобразование массива байтов в объединённую команду
+template<std::size_t N>
+constexpr auto makeCommand(const std::array<uint8_t, N>& bytes) noexcept {
+    std::array<uint8_t, N * 8 + 1> cmd{}; // +1 для завершающего 0
+    for (std::size_t i = 0; i < N; ++i)
+        for (std::size_t bit = 0; bit < 8; ++bit)
+            cmd[i * 8 + bit] = bitToPulse(bytes[i], bit);
+    cmd[N * 8] = 0;
+    return cmd;
+}
+
+// === Использование ===
+constexpr auto conv_cmd  = makeCommand(std::array<uint8_t, 2>{0xCC, 0x44});
+constexpr auto read_cmd  = makeCommand(std::array<uint8_t, 2>{0xCC, 0xBE});
 
 void DS18B20::ForceUpdateEvent(TIM_TypeDef *tim) {
     tim->EGR = TIM_EGR_UG;                 // Сгенерировать событие обновления
@@ -354,7 +363,7 @@ void DS18B20::poll() {
             // Verify DS18B20 presence using captured edge timestamps
             if (check_presence()) {
                 // Device present - send temperature conversion command
-                send_command(conv_cmd);
+                send_command(conv_cmd.data());
                 // Transition to WAIT state to allow conversion time
                 ctx.current_state = 3;
             } else {
@@ -389,7 +398,7 @@ void DS18B20::poll() {
             // Verify DS18B20 presence again
             if (check_presence()) {
                 // Device present - send read scratchpad command
-                send_command(read_cmd);
+                send_command(read_cmd.data());
                 // Transition to READ state
                 ctx.current_state = 6;
             } else {

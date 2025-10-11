@@ -10,7 +10,6 @@
 #include "ThermostatController.hpp"
 
 #include "GpioDriver.hpp"
-#include "GpioDriverCT.hpp"
 #include "Button.hpp"
 #include "RccDriver.hpp"
 #include "TimDriver.hpp"
