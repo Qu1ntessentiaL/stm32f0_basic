@@ -17,8 +17,8 @@
 #include "UsartDriver.hpp"
 
 #include "ht1621.hpp"
-#include "ds18b20.h"
-#include "uart.h"
+#include "ds18b20.hpp"
+#include "uart.hpp"
 
 TimDriver tim17(TIM17);
 
@@ -41,7 +41,6 @@ void Tim17Callback() {
     }
 }
 */
-void task_sensor() { ds18b20_poll(); }
 
 void task_uart() { uart_poll_tx(); }
 
@@ -79,9 +78,11 @@ int main() {
     tim17.setCallback(Tim17Callback);
     tim17.Start();
     */
+
+    static DS18B20 sens{};
     hardware_init(); // Initialize hardware peripherals (non-blocking)
     uart_write_str("DS18B20 demo starting...\r\n"); // Enqueue startup message to UART buffer
-    ds18b20_init();  // Initialize DS18B20 driver (non-blocking)
+    sens.init();  // Initialize DS18B20 driver (non-blocking)
     /*
     UsartDriver Usart1;
     Usart1.Init(SystemCoreClock);
@@ -101,8 +102,8 @@ int main() {
                     GPIOA, 3,
                     GPIOA, 4);
 
-    for (;;) {            // Main event loop (non-blocking, cooperative multitasking)
-        ds18b20_poll();   // Poll DS18B20 state machine - advances 1-Wire communication state
+    for (;;) {          // Main event loop (non-blocking, cooperative multitasking)
+        sens.poll();    // Poll DS18B20 state machine - advances 1-Wire communication state
         uart_poll_tx(); // Poll UART transmission - feeds hardware from buffer
         // Other non-blocking tasks can be added here
     }

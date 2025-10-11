@@ -1,40 +1,4 @@
-#include "ds18b20.h"
-#include "stm32f0xx.h"
-
-/**
- * @defgroup DS18B20_Private_Types DS18B20 Private Types
- * @{
- */
-
-/**
- * @brief DS18B20 driver context structure using union for memory efficiency
- * @note Different stages of communication use the same memory for different purposes
- */
-typedef struct {
-    union {
-        volatile uint16_t edge[36];       /**< Edge timestamps for presence detection */
-        volatile uint8_t pulse[72];      /**< Pulse durations for data decoding */
-        uint8_t scratchpad[9];  /**< Sensor scratchpad data */
-        uint64_t fill_union;     /**< Utility field for filling the union */
-    };
-    uint8_t current_state;  /**< Current state of the state machine */
-} DS18B20_ctx_t;
-
-/**
- * @}
- */
-
-/**
- * @defgroup DS18B20_Private_Variables DS18B20 Private Variables
- * @{
- */
-
-/** @brief Global driver context instance */
-static DS18B20_ctx_t ctx;
-
-/**
- * @}
- */
+#include "ds18b20.hpp"
 
 /**
  * @defgroup DS18B20_Private_Constants DS18B20 Private Constants
@@ -42,17 +6,17 @@ static DS18B20_ctx_t ctx;
  */
 
 /** @brief Timer configuration for 1µs resolution (72MHz system clock / 72 = 1MHz) */
-#define TIM_PRESCALER           47
+#define TIM_PRESCALER         47
 /** @brief Minimum reset pulse duration in microseconds */
 #define RESET_PULSE_MIN       480U
 /** @brief Maximum reset pulse duration in microseconds */
 #define RESET_PULSE_MAX       540U
 /** @brief Minimum presence pulse positive width in microseconds */
-#define POSITIVE_WIDTH_MIN     15U
+#define POSITIVE_WIDTH_MIN    15U
 /** @brief Maximum presence pulse positive width in microseconds */
-#define POSITIVE_WIDTH_MAX     60U
+#define POSITIVE_WIDTH_MAX    60U
 /** @brief Minimum presence pulse negative width in microseconds */
-#define NEGATIVE_WIDTH_MIN     60U
+#define NEGATIVE_WIDTH_MIN    60U
 /** @brief Maximum presence pulse negative width in microseconds */
 #define NEGATIVE_WIDTH_MAX    240U
 /** @brief Calculated minimum presence pulse timing */
@@ -106,33 +70,10 @@ static const uint8_t conv_cmd[] = {BYTE_TO_PULSES(0xCC), BYTE_TO_PULSES(0x44), 0
 /** @brief DS18B20 Read Scratchpad command sequence in pulse duration format */
 static const uint8_t read_cmd[] = {BYTE_TO_PULSES(0xCC), BYTE_TO_PULSES(0xBE), 0};
 
-static inline void ForceUpdateEvent(TIM_TypeDef *tim) {
+void DS18B20::ForceUpdateEvent(TIM_TypeDef *tim) {
     tim->EGR = TIM_EGR_UG;                 // Сгенерировать событие обновления
     while (!(tim->SR & TIM_SR_UIF)) {}     // Дождаться флага обновления
     tim->SR &= ~TIM_SR_UIF;                // Сбросить флаг
-}
-
-static inline void PA8_to_TIM1_CH1_AF2(void) {
-    // 1. Включаем тактирование GPIOA
-    RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
-
-    // 2. Настраиваем PA8 как "Alternate Function"
-    GPIOA->MODER &= ~(3U << (8 * 2));   // очистить 2 бита (16 и 17)
-    GPIOA->MODER |= (2U << (8 * 2));   // установить 10b = Alternate Function
-
-    // 3. Настраиваем тип выхода (Push-Pull)
-    GPIOA->OTYPER &= ~(1U << 8);        // 0 = Push-Pull
-
-    // 4. Настраиваем скорость
-    GPIOA->OSPEEDR |= (3U << (8 * 2));  // 11b = High speed
-
-    // 5. Настраиваем без подтяжек
-    GPIOA->PUPDR &= ~(3U << (8 * 2));   // 00b = No pull-up/pull-down
-
-    // 6. Выбираем альтернативную функцию AF2 для TIM1_CH1
-    // У PA8 альтернативные функции задаются в AFRH (пины 8..15)
-    GPIOA->AFR[1] &= ~(0xFU << ((8 - 8) * 4)); // очистить 4 бита
-    GPIOA->AFR[1] |= (0x2U << ((8 - 8) * 4)); // установить AF2
 }
 
 /**
@@ -172,7 +113,7 @@ __WEAK void ds18b20_temp_ready(int16_t temp_tenths) {
  * @brief Calculate CRC8 checksum for DS18B20 scratchpad data validation
  * @return CRC8 checksum value
  */
-__STATIC_FORCEINLINE uint8_t check_scratchpad_crc(void) {
+uint8_t DS18B20::check_scratchpad_crc() {
     uint8_t crc = 0;
     // Process each byte in the scratchpad (first 8 bytes) for CRC calculation
     for (uint8_t i = 0; i < DS18B20_CRC8_BYTES; i++) {
@@ -191,7 +132,7 @@ __STATIC_FORCEINLINE uint8_t check_scratchpad_crc(void) {
 /**
  * @brief Decode pulse durations into scratchpad bytes using bit timing analysis
  */
-__STATIC_FORCEINLINE void decode_scratchpad(void) {
+void DS18B20::decode_scratchpad() {
     // Process each byte in the scratchpad (9 bytes total)
     for (unsigned byte = 0; byte < DS18B20_SCRATCHPAD_LEN; ++byte) {
         const unsigned bit_start = byte * DS18B20_BITS_PER_BYTE;
@@ -212,7 +153,7 @@ __STATIC_FORCEINLINE void decode_scratchpad(void) {
  * @brief Convert raw temperature data from scratchpad to tenths of degrees Celsius
  * @return Temperature value in tenths of degrees Celsius
  */
-__STATIC_FORCEINLINE int16_t decode_temperature(void) {
+int16_t DS18B20::decode_temperature() {
     // Combine LSB and MSB of temperature register (bytes 0 and 1)
     int16_t raw = (int16_t) ((ctx.scratchpad[1] << 8) | ctx.scratchpad[0]);
     // Convert to tenths of degrees Celsius (raw value in 1/16th degrees)
@@ -224,7 +165,7 @@ __STATIC_FORCEINLINE int16_t decode_temperature(void) {
  * @brief Verify presence of DS18B20 sensor by checking reset pulse timing
  * @return 1 if device present, 0 if no device detected
  */
-__STATIC_FORCEINLINE unsigned check_presence(void) {
+unsigned DS18B20::check_presence() {
     // Validate that reset pulse duration is within specification
     // and presence pulse timing indicates a responding device
     return (ctx.edge[0] >= RESET_PULSE_MIN) && (ctx.edge[0] <= RESET_PULSE_MAX) &&
@@ -236,7 +177,7 @@ __STATIC_FORCEINLINE unsigned check_presence(void) {
  * @param[in] arr Auto-reload register value
  * @param[in] rcr Repetition counter value
  */
-__STATIC_FORCEINLINE void start_timer(uint16_t arr, uint8_t rcr) {
+void DS18B20::start_timer(uint16_t arr, uint8_t rcr) {
     TIM1->ARR = arr;
     TIM1->RCR = rcr;
     // Force update event to load new values
@@ -246,21 +187,9 @@ __STATIC_FORCEINLINE void start_timer(uint16_t arr, uint8_t rcr) {
 }
 
 /**
- * @brief Wait for temperature conversion to complete (750ms typical)
- * @note Non-blocking - starts timer that will generate update event when complete
- */
-__STATIC_FORCEINLINE void wait_conversion(void) { start_timer(62500, 11); }
-
-/**
- * @brief Start inter-measurement pause period (500ms)
- * @note Non-blocking - starts timer for inter-measurement delay
- */
-__STATIC_FORCEINLINE void start_cycle_pause(void) { start_timer(62500, 79); }
-
-/**
  * @brief Initialize 1-Wire bus reset sequence using timer and DMA
  */
-__STATIC_FORCEINLINE void reset_bus(void) {
+void DS18B20::reset_bus() {
     // Configure timer for reset pulse generation (480µs low)
     TIM1->ARR = RESET_TIMEOUT;              // Total reset slot time (960µs)
     TIM1->CCR1 = RESET_PULSE_DURATION;      // Reset pulse duration (480µs)
@@ -289,7 +218,7 @@ __STATIC_FORCEINLINE void reset_bus(void) {
  * @param[in] cmd Pointer to command sequence in pulse duration format
  * @note Non-blocking - configures hardware to transmit command automatically
  */
-__STATIC_FORCEINLINE void send_command(const uint8_t *cmd) {
+void DS18B20::send_command(const uint8_t *cmd) {
     // Configure timer for command transmission using DMA
     TIM1->RCR = DS18B20_DMA_TRANSFERS - 1;   // Number of repetitions (16 transfers)
     TIM1->ARR = ONE_PULSE + ZERO_PULSE + 1;  // Total bit slot time (62µs)
@@ -315,7 +244,7 @@ __STATIC_FORCEINLINE void send_command(const uint8_t *cmd) {
  * @brief Read scratchpad data from DS18B20 using timer capture and DMA
  * @note Non-blocking - configures hardware to capture data automatically
  */
-__STATIC_FORCEINLINE void read_data(void) {
+void DS18B20::read_data() {
     // Configure timer for data reading with input capture
     TIM1->RCR = DS18B20_SCRATCHPAD_BITS - 1; // Number of repetitions (72 bits)
     TIM1->ARR = ONE_PULSE + ZERO_PULSE + 1;  // Total bit slot time (62µs)
@@ -350,7 +279,7 @@ __STATIC_FORCEINLINE void read_data(void) {
 /**
  * @brief Initialize DS18B20 driver - configure clocks and peripherals
  */
-void ds18b20_init(void) {
+void DS18B20::init() {
     // Enable clocks for required peripherals: GPIOA, TIM1, DMA1
     RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
     RCC->AHBENR |= RCC_AHBENR_GPIOAEN | RCC_AHBENR_DMA1EN;
@@ -358,8 +287,28 @@ void ds18b20_init(void) {
     TIM1->PSC = TIM_PRESCALER;
     TIM1->EGR = TIM_EGR_UG;
     TIM1->BDTR = TIM_BDTR_MOE;
+
     // Configure PA8 for 1-Wire communication (alternate function open drain)
-    PA8_to_TIM1_CH1_AF2();
+    // 1. Включаем тактирование GPIOA
+    RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
+
+    // 2. Настраиваем PA8 как "Alternate Function"
+    GPIOA->MODER &= ~(3U << (8 * 2));   // очистить 2 бита (16 и 17)
+    GPIOA->MODER |= (2U << (8 * 2));   // установить 10b = Alternate Function
+
+    // 3. Настраиваем тип выхода (Push-Pull)
+    GPIOA->OTYPER &= ~(1U << 8);        // 0 = Push-Pull
+
+    // 4. Настраиваем скорость
+    GPIOA->OSPEEDR |= (3U << (8 * 2));  // 11b = High speed
+
+    // 5. Настраиваем без подтяжек
+    GPIOA->PUPDR &= ~(3U << (8 * 2));   // 00b = No pull-up/pull-down
+
+    // 6. Выбираем альтернативную функцию AF2 для TIM1_CH1
+    // У PA8 альтернативные функции задаются в AFRH (пины 8..15)
+    GPIOA->AFR[1] &= ~(0xFU << ((8 - 8) * 4)); // очистить 4 бита
+    GPIOA->AFR[1] |= (0x2U << ((8 - 8) * 4)); // установить AF2
 }
 
 /**
@@ -367,7 +316,7 @@ void ds18b20_init(void) {
  * @note Non-blocking state machine that advances 1-Wire communication state
  * @note Uses timer update interrupt flag to determine when operations complete
  */
-void ds18b20_poll(void) {
+void DS18B20::poll() {
 
 #if defined ELAPSED_TIME
     static uint32_t elapsed_time;

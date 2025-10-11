@@ -1,4 +1,4 @@
-#include "uart.h"
+#include "uart.hpp"
 
 // ======== Config: printing buffer size (power of two) ========
 #ifndef UART_TX_BUF_SIZE
@@ -29,7 +29,7 @@ static uint8_t uart_tx_buf[UART_TX_BUF_SIZE];        // circular buffer for UART
 __STATIC_FORCEINLINE int uart_tx_enqueue_byte(uint8_t b) {
     uint8_t head = uart_tx_head;
     // Calculate next head position with wrap-around using power-of-two mask
-    uint8_t next = (uint8_t) ((head + 1u) & UART_TX_IDX_MASK);
+    auto next = (uint8_t) ((head + 1u) & UART_TX_IDX_MASK);
     if (next == uart_tx_tail) { // Check if buffer is full
         return 0; // Buffer full - non-blocking return
     }
@@ -61,7 +61,7 @@ int uart_write_str(const char *s) {
  * @note Must be called periodically to feed UART hardware from buffer
  * @note Returns immediately without blocking
  */
-void uart_poll_tx(void) {
+void uart_poll_tx() {
     // Check if UART is ready to transmit (TXE flag set) and buffer not empty
     if ((USART1->ISR & USART_ISR_TXE) && (uart_tx_tail != uart_tx_head)) {
         // Get byte from buffer at tail position
@@ -76,7 +76,7 @@ void uart_poll_tx(void) {
 /**
  * @brief Initialize microcontroller peripherals for UART communication and LED control
  */
-void hardware_init(void) {
+void hardware_init() {
     /* --- 1. Включаем тактирование --- */
     RCC->AHBENR |= RCC_AHBENR_GPIOAEN;    // GPIOA
     RCC->APB2ENR |= RCC_APB2ENR_USART1EN; // USART1

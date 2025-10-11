@@ -1,13 +1,8 @@
 #pragma once
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "ds18b20.hpp"
 
-#include "stm32f0xx.h"
-#include "ds18b20.h"
-
-void hardware_init(void);
+void hardware_init();
 
 void ds18b20_led_control(unsigned action);
 
@@ -17,8 +12,4 @@ int uart_write_str(const char *s);
 
 void uart_write_int(int value);
 
-void uart_poll_tx(void);
-
-#ifdef __cplusplus
-}
-#endif
+void uart_poll_tx();
