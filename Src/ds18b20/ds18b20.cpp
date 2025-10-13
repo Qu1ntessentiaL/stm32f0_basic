@@ -23,19 +23,19 @@
 /** @brief Maximum presence pulse negative width in microseconds */
 #define NEGATIVE_WIDTH_MAX    240U
 /** @brief Calculated minimum presence pulse timing */
-#define PRESENCE_PULSE_MIN   (RESET_PULSE_MIN + POSITIVE_WIDTH_MIN + NEGATIVE_WIDTH_MIN)
+#define PRESENCE_PULSE_MIN    (RESET_PULSE_MIN + POSITIVE_WIDTH_MIN + NEGATIVE_WIDTH_MIN)
 /** @brief Calculated maximum presence pulse timing */
-#define PRESENCE_PULSE_MAX   (RESET_PULSE_MAX + POSITIVE_WIDTH_MAX + NEGATIVE_WIDTH_MAX)
+#define PRESENCE_PULSE_MAX    (RESET_PULSE_MAX + POSITIVE_WIDTH_MAX + NEGATIVE_WIDTH_MAX)
 /** @brief Duration to drive bus low during reset in microseconds */
-#define RESET_PULSE_DURATION   RESET_PULSE_MIN
+#define RESET_PULSE_DURATION  RESET_PULSE_MIN
 /** @brief Total reset timeslot timeout in microseconds */
-#define RESET_TIMEOUT          (RESET_PULSE_MIN * 2)
+#define RESET_TIMEOUT         (RESET_PULSE_MIN * 2)
 /** @brief CRC8 polynomial for DS18B20 scratchpad validation (Dallas/Maxim algorithm) */
 #define DS18B20_CRC8_POLY     0x8C
 /** @brief Number of bytes to include in CRC calculation */
-#define DS18B20_CRC8_BYTES       8
+#define DS18B20_CRC8_BYTES    8
 /** @brief Size of edge capture buffer for presence detection */
-#define CAPTURE_BUF_SIZE         2
+#define CAPTURE_BUF_SIZE      2
 /** @brief Total length of DS18B20 scratchpad in bytes */
 #define DS18B20_SCRATCHPAD_LEN   9
 /** @brief Standard 8 bits per byte */
@@ -48,7 +48,7 @@
 #define DS18B20_DMA_TRANSFERS   16
 
 // Константы для длительностей импульсов
-constexpr uint8_t ONE_PULSE  = 1;   // 1 µs
+constexpr uint8_t ONE_PULSE = 1;   // 1 µs
 constexpr uint8_t ZERO_PULSE = 60;  // 60 µs
 
 // Преобразование одного бита
@@ -66,7 +66,7 @@ constexpr std::array<uint8_t, 8> byteToPulses(uint8_t byte) noexcept {
 
 // Преобразование массива байтов в объединённую команду
 template<std::size_t N>
-constexpr auto makeCommand(const std::array<uint8_t, N>& bytes) noexcept {
+constexpr auto makeCommand(const std::array<uint8_t, N> &bytes) noexcept {
     std::array<uint8_t, N * 8 + 1> cmd{}; // +1 для завершающего 0
     for (std::size_t i = 0; i < N; ++i)
         for (std::size_t bit = 0; bit < 8; ++bit)
@@ -76,8 +76,8 @@ constexpr auto makeCommand(const std::array<uint8_t, N>& bytes) noexcept {
 }
 
 // === Использование ===
-constexpr auto conv_cmd  = makeCommand(std::array<uint8_t, 2>{0xCC, 0x44});
-constexpr auto read_cmd  = makeCommand(std::array<uint8_t, 2>{0xCC, 0xBE});
+constexpr auto conv_cmd = makeCommand(std::array<uint8_t, 2>{0xCC, 0x44});
+constexpr auto read_cmd = makeCommand(std::array<uint8_t, 2>{0xCC, 0xBE});
 
 void DS18B20::ForceUpdateEvent(TIM_TypeDef *tim) {
     tim->EGR = TIM_EGR_UG;                 // Сгенерировать событие обновления
@@ -164,7 +164,7 @@ void DS18B20::decode_scratchpad() {
  */
 int16_t DS18B20::decode_temperature() {
     // Combine LSB and MSB of temperature register (bytes 0 and 1)
-    int16_t raw = (int16_t) ((ctx.scratchpad[1] << 8) | ctx.scratchpad[0]);
+    auto raw = (int16_t) ((ctx.scratchpad[1] << 8) | ctx.scratchpad[0]);
     // Convert to tenths of degrees Celsius (raw value in 1/16th degrees)
     // Multiply by 10 then divide by 16 to get value in tenths of degree
     return (raw * 10) / 16;
@@ -339,33 +339,33 @@ void DS18B20::poll() {
 
     // State machine to manage 1-Wire communication sequence
     switch (ctx.current_state) {
-        case 0: // IDLE - Initialize for new measurement cycle
+        case FsmStates::IDLE: // IDLE - Initialize for new measurement cycle
 #if defined ELAPSED_TIME
             elapsed_time = DWT->CYCCNT;
 #endif
             // Initialize union memory (fills with 0xFF pattern)
             ctx.fill_union = (uint64_t) -1;
             // Transition to START state
-            ctx.current_state = 1;
+            ctx.current_state = FsmStates::START;
             /* fallthrough to START state immediately */
             /* fallthrough  */
 
-        case 1: // START - Begin measurement cycle, turn on LED
+        case FsmStates::START: // START - Begin measurement cycle, turn on LED
             // Turn on LED to indicate measurement in progress
             ds18b20_led_control(!0);
             // Initiate 1-Wire bus reset sequence
             reset_bus();
             // Transition to CONVERT state
-            ctx.current_state = 2;
+            ctx.current_state = FsmStates::CONVERT;
             break;
 
-        case 2: // CONVERT - Check presence and send convert command
+        case FsmStates::CONVERT: // CONVERT - Check presence and send convert command
             // Verify DS18B20 presence using captured edge timestamps
             if (check_presence()) {
                 // Device present - send temperature conversion command
                 send_command(conv_cmd.data());
                 // Transition to WAIT state to allow conversion time
-                ctx.current_state = 3;
+                ctx.current_state = FsmStates::WAIT;
             } else {
                 // No device present - report error and pause
                 ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_NO_SENSOR
@@ -376,31 +376,31 @@ void DS18B20::poll() {
                 // Start inter-measurement pause
                 start_cycle_pause();
                 // Return to IDLE state
-                ctx.current_state = 0;
+                ctx.current_state = FsmStates::IDLE;
             }
             break;
 
-        case 3: // WAIT - Wait for temperature conversion to complete
+        case FsmStates::WAIT: // WAIT - Wait for temperature conversion to complete
             // Start timer for conversion wait period (750ms typical)
             wait_conversion();
             // Transition to CONTINUE state
-            ctx.current_state = 4;
+            ctx.current_state = FsmStates::CONTINUE;
             break;
 
-        case 4: // CONTINUE - Prepare for data readback
+        case FsmStates::CONTINUE: // CONTINUE - Prepare for data readback
             // Initiate second 1-Wire bus reset sequence
             reset_bus();
             // Transition to REQUEST state
-            ctx.current_state = 5;
+            ctx.current_state = FsmStates::REQUEST;
             break;
 
-        case 5: // REQUEST - Check presence and send read command
+        case FsmStates::REQUEST: // REQUEST - Check presence and send read command
             // Verify DS18B20 presence again
             if (check_presence()) {
                 // Device present - send read scratchpad command
                 send_command(read_cmd.data());
                 // Transition to READ state
-                ctx.current_state = 6;
+                ctx.current_state = FsmStates::READ;
             } else {
                 // No device present - report error and pause
                 ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_NO_SENSOR
@@ -411,18 +411,18 @@ void DS18B20::poll() {
                 // Start inter-measurement pause
                 start_cycle_pause();
                 // Return to IDLE state
-                ctx.current_state = 0;
+                ctx.current_state = FsmStates::IDLE;
             }
             break;
 
-        case 6: // READ - Read scratchpad data from sensor
+        case FsmStates::READ: // READ - Read scratchpad data from sensor
             // Initiate scratchpad data read using timer capture and DMA
             read_data();
             // Transition to DECODE state
-            ctx.current_state = 7;
+            ctx.current_state = FsmStates::DECODE;
             break;
 
-        case 7: // DECODE - Process received data and report temperature
+        case FsmStates::DECODE: // DECODE - Process received data and report temperature
             // Decode captured pulse durations into scratchpad bytes
             decode_scratchpad();
             // Turn off LED to indicate measurement complete
@@ -448,7 +448,7 @@ void DS18B20::poll() {
             // Start inter-measurement pause period
             start_cycle_pause();
             // Return to IDLE state for next measurement cycle
-            ctx.current_state = 0;
+            ctx.current_state = FsmStates::IDLE;
             break;
 
         default:
@@ -459,7 +459,7 @@ void DS18B20::poll() {
 #endif
             );
             // Return to IDLE state
-            ctx.current_state = 0;
+            ctx.current_state = FsmStates::IDLE;
             break;
     }
 }

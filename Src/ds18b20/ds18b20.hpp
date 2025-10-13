@@ -24,6 +24,17 @@
 #include "stm32f0xx.h"
 
 class DS18B20 {
+    enum class FsmStates : uint8_t {
+        IDLE,
+        START,
+        CONVERT,
+        WAIT,
+        CONTINUE,
+        REQUEST,
+        READ,
+        DECODE,
+        ERROR
+    };
     /**
      * @brief DS18B20 driver context structure using union for memory efficiency
      * @note Different stages of communication use the same memory for different purposes
@@ -35,7 +46,7 @@ class DS18B20 {
             uint8_t scratchpad[9];        /**< Sensor scratchpad data */
             uint64_t fill_union;          /**< Utility field for filling the union */
         };
-        uint8_t current_state;            /**< Current state of the state machine */
+        FsmStates current_state;            /**< Current state of the state machine */
     } DS18B20_ctx_t;
 
     DS18B20_ctx_t ctx;
