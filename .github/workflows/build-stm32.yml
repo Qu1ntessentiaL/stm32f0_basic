@@ -14,7 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 🧰 Ставим актуальный ARM GCC
+      # 🧰 Устанавливаем актуальный ARM GCC Toolchain
       - name: Install latest ARM GCC Toolchain
         uses: carlosperate/arm-none-eabi-gcc-action@v1
         with:
@@ -23,16 +23,16 @@ jobs:
       - name: Check GCC version
         run: arm-none-eabi-gcc --version
 
-      # ⚡️ Кэширование сборок
+      # ⚡️ Кэширование CMake сборок
       - name: Cache CMake build
         uses: actions/cache@v4
         with:
           path: |
             build/Debug
             build/Release
-          key: "${{ runner.os }}-stm32-${{ hashFiles('**/CMakeLists.txt', '**/CMakePresets.json') }}"
+          key: "${{ runner.os }}_stm32_${{ hashFiles('**/CMakeLists.txt', '**/CMakePresets.json') }}"
           restore-keys: |
-            ${{ runner.os }}-stm32-
+            ${{ runner.os }}_stm32_
 
       # ---------- Debug build ----------
       - name: Configure Debug
@@ -44,17 +44,25 @@ jobs:
         run: cmake --build build/Debug -j$(nproc)
 
       - name: Show Debug firmware size
-        run: arm-none-eabi-size build/Debug/*.elf
+        shell: bash
+        run: |
+          ELF=$(find build/Debug -type f -name "*.elf" | head -n 1)
+          if [ -z "$ELF" ]; then
+            echo "❌ No ELF file found in build/Debug"
+            exit 1
+          fi
+          echo "📦 Found ELF: $ELF"
+          arm-none-eabi-size "$ELF"
 
       - name: Upload Debug artifacts
         uses: actions/upload-artifact@v4
         with:
           name: stm32f0-debug
           path: |
-            build/Debug/*.elf
-            build/Debug/*.bin
-            build/Debug/*.hex
-            build/Debug/*_disasm.s
+            build/Debug/**/*.elf
+            build/Debug/**/*.bin
+            build/Debug/**/*.hex
+            build/Debug/**/*_disasm.s
 
       # ---------- Release build ----------
       - name: Configure Release
@@ -66,25 +74,39 @@ jobs:
         run: cmake --build build/Release -j$(nproc)
 
       - name: Show Release firmware size
-        run: arm-none-eabi-size build/Release/*.elf
+        shell: bash
+        run: |
+          ELF=$(find build/Release -type f -name "*.elf" | head -n 1)
+          if [ -z "$ELF" ]; then
+            echo "❌ No ELF file found in build/Release"
+            exit 1
+          fi
+          echo "📦 Found ELF: $ELF"
+          arm-none-eabi-size "$ELF"
 
-      # 🔍 Проверяем, что прошивка < 32 KB
+      # 🔍 Проверяем лимит Flash (32KB)
       - name: Check flash size limit (32KB)
         shell: bash
         run: |
-          SIZE=$(arm-none-eabi-size -A build/Release/*.elf | grep 'text' | awk '{print $2}')
+          ELF=$(find build/Release -type f -name "*.elf" | head -n 1)
+          if [ -z "$ELF" ]; then
+            echo "❌ No ELF file found for flash size check"
+            exit 1
+          fi
+          SIZE=$(arm-none-eabi-size -A "$ELF" | grep 'text' | awk '{print $2}')
           echo "Firmware .text section size: $SIZE bytes"
           if [ "$SIZE" -gt 32768 ]; then
             echo "❌ Firmware too large ($SIZE > 32768 bytes)"
             exit 1
           fi
+          echo "✅ Firmware fits in flash (${SIZE}/32768 bytes)"
 
       - name: Upload Release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: stm32f0-release
           path: |
-            build/Release/*.elf
-            build/Release/*.bin
-            build/Release/*.hex
-            build/Release/*_disasm.s
+            build/Release/**/*.elf
+            build/Release/**/*.bin
+            build/Release/**/*.hex
+            build/Release/**/*_disasm.s
