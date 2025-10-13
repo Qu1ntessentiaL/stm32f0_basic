@@ -14,20 +14,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install ARM GCC Toolchain
-        shell: bash
-        run: |
-          choco install -y gcc-arm-embedded
-          arm-none-eabi-gcc --version
+      - name: Install latest ARM GCC Toolchain
+        uses: carlosperate/arm-none-eabi-gcc-action@v1
+        with:
+          release: "13.3.Rel1"
 
-      # ---------- Debug preset ----------
-      - name: Configure & Build Debug (Preset)
-        shell: bash
-        run: |
-          cmake --preset Debug
-          cmake --build --preset Debug -j$(nproc)
+      - name: Check GCC version
+        run: arm-none-eabi-gcc --version
 
-      - name: Upload Debug Artifacts
+      # ---------- Debug build ----------
+      - name: Configure Debug
+        shell: bash
+        run: cmake --preset Debug
+
+      - name: Build Debug
+        shell: bash
+        run: cmake --build build/Debug -j$(nproc)
+
+      - name: Upload Debug artifacts
         uses: actions/upload-artifact@v4
         with:
           name: stm32f0-debug
@@ -37,14 +41,16 @@ jobs:
             build/Debug/*.hex
             build/Debug/*_disasm.s
 
-      # ---------- Release preset ----------
-      - name: Configure & Build Release (Preset)
+      # ---------- Release build ----------
+      - name: Configure Release
         shell: bash
-        run: |
-          cmake --preset Release
-          cmake --build --preset Release -j$(nproc)
+        run: cmake --preset Release
 
-      - name: Upload Release Artifacts
+      - name: Build Release
+        shell: bash
+        run: cmake --build build/Release -j$(nproc)
+
+      - name: Upload Release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: stm32f0-release
