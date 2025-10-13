@@ -1,4 +1,4 @@
-name: Build STM32F0 Firmware (Windows Debug & Release)
+name: Build STM32F0 Firmware (Windows Presets)
 
 on:
   push:
@@ -20,42 +20,36 @@ jobs:
           choco install -y gcc-arm-embedded
           arm-none-eabi-gcc --version
 
-      # ---------- Debug сборка ----------
-      - name: Configure Debug
+      # ---------- Debug preset ----------
+      - name: Configure & Build Debug (Preset)
         shell: bash
         run: |
-          mkdir -p build/debug
-          cd build/debug
-          cmake -DCMAKE_BUILD_TYPE=Debug ../..
+          cmake --preset Debug
+          cmake --build --preset Debug -j$(nproc)
 
-      - name: Build Debug
-        shell: bash
-        run: |
-          cd build/debug
-          cmake --build . --config Debug -j$(nproc)
-
-      - name: Upload Debug firmware
+      - name: Upload Debug Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: stm32f0-firmware-debug
-          path: build/debug/*.bin
+          name: stm32f0-debug
+          path: |
+            build/Debug/*.elf
+            build/Debug/*.bin
+            build/Debug/*.hex
+            build/Debug/*_disasm.s
 
-      # ---------- Release сборка ----------
-      - name: Configure Release
+      # ---------- Release preset ----------
+      - name: Configure & Build Release (Preset)
         shell: bash
         run: |
-          mkdir -p build/release
-          cd build/release
-          cmake -DCMAKE_BUILD_TYPE=Release ../..
+          cmake --preset Release
+          cmake --build --preset Release -j$(nproc)
 
-      - name: Build Release
-        shell: bash
-        run: |
-          cd build/release
-          cmake --build . --config Release -j$(nproc)
-
-      - name: Upload Release firmware
+      - name: Upload Release Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: stm32f0-firmware-release
-          path: build/release/*.bin
+          name: stm32f0-release
+          path: |
+            build/Release/*.elf
+            build/Release/*.bin
+            build/Release/*.hex
+            build/Release/*_disasm.s
