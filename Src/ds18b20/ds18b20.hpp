@@ -59,7 +59,7 @@ class DS18B20 {
 
     int16_t decode_temperature();
 
-    unsigned check_presence();
+    bool check_presence();
 
     void start_timer(uint16_t arr, uint8_t rcr);
 

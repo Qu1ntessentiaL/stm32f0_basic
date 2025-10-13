@@ -21,9 +21,7 @@
 
 TimDriver tim17(TIM17);
 
-Button<> *S1_Ptr = nullptr;
-
-HT1621B *disp_ptr = nullptr;
+DS18B20 *sens_ptr = nullptr;
 /*
 void Tim17Callback() {
     auto e1 = S1_Ptr->tick();
@@ -41,12 +39,14 @@ void Tim17Callback() {
 }
 */
 
+void task_sensor() { sens_ptr->poll(); }
+
 void task_uart() { uart_poll_tx(); }
 
 int main() {
     RccDriver::InitMax48MHz();
     //InitMCO(); // MCO connected to R9 resistor (PA8-pin)
-    RccDriver::InitSysTickUs(1000, SystemCoreClock);
+    SysTick_Config(SystemCoreClock / 1000);
     /*
     static Button<> BtnS1(GPIOA, 1),
             BtnS2(GPIOA, 2),
@@ -79,21 +79,21 @@ int main() {
     */
 
     static DS18B20 sens{};
+    sens_ptr = &sens;
+    sens.init();   // Initialize DS18B20 driver (non-blocking)
+
     hardware_init(); // Initialize hardware peripherals (non-blocking)
     uart_write_str("DS18B20 demo starting...\r\n"); // Enqueue startup message to UART buffer
-    sens.init();  // Initialize DS18B20 driver (non-blocking)
     /*
     UsartDriver Usart1;
     Usart1.Init(SystemCoreClock);
     Usart1.write_str("1234");
     */
     static HT1621B disp;
-    disp_ptr = &disp;
-    disp_ptr->ShowLetter(5, 't');
-    disp_ptr->ShowDigit(4, 0, false);
-    disp_ptr->ShowInt(25, true);
+    disp.ShowLetter(5, 't');
+    disp.ShowDigit(4, 0, false);
+    disp.ShowInt(25, true);
 
-    TaskScheduler scheduler;
     EventQueue eventQueue;
     ThermostatController controller;
     Buttons buttons(GPIOA, 1,
@@ -101,9 +101,9 @@ int main() {
                     GPIOA, 3,
                     GPIOA, 4);
 
-    for (;;) {          // Main event loop (non-blocking, cooperative multitasking)
-        sens.poll();    // Poll DS18B20 state machine - advances 1-Wire communication state
-        uart_poll_tx(); // Poll UART transmission - feeds hardware from buffer
-        // Other non-blocking tasks can be added here
-    }
+    TaskScheduler scheduler;
+    scheduler.init();
+    scheduler.addTask(task_uart, 50);
+    scheduler.addTask(task_sensor, 5);
+    scheduler.run();
 }

@@ -5,6 +5,8 @@
 #include <functional>
 #include <cstdint>
 
+extern "C" void SysTick_Handler(void);
+
 class TaskScheduler {
 public:
     using TaskFunc = std::function<void(void)>;
@@ -46,4 +48,6 @@ private:
     std::array<Task, MaxTasks> tasks{};
     size_t task_count = 0;
     static inline volatile uint32_t ms_ticks = 0;
+
+    friend void SysTick_Handler(void);
 };

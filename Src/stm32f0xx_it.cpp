@@ -13,7 +13,9 @@ void HardFault_Handler(void) {
     while (1) {}
 }
 
-void SysTick_Handler(void) {}
+extern "C" void SysTick_Handler(void) {
+    TaskScheduler::ms_ticks++;
+}
 
 void EXTI0_1_IRQHandler(void) {}
 

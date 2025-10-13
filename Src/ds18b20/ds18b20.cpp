@@ -81,7 +81,7 @@ constexpr auto read_cmd = makeCommand(std::array<uint8_t, 2>{0xCC, 0xBE});
 
 void DS18B20::ForceUpdateEvent(TIM_TypeDef *tim) {
     tim->EGR = TIM_EGR_UG;                 // Сгенерировать событие обновления
-    while (!(tim->SR & TIM_SR_UIF)) {}     // Дождаться флага обновления
+    //while (!(tim->SR & TIM_SR_UIF)) {}     // Дождаться флага обновления
     tim->SR &= ~TIM_SR_UIF;                // Сбросить флаг
 }
 
@@ -167,14 +167,14 @@ int16_t DS18B20::decode_temperature() {
     auto raw = (int16_t) ((ctx.scratchpad[1] << 8) | ctx.scratchpad[0]);
     // Convert to tenths of degrees Celsius (raw value in 1/16th degrees)
     // Multiply by 10 then divide by 16 to get value in tenths of degree
-    return (raw * 10) / 16;
+    return static_cast<int16_t>((raw * 10) >> 4);
 }
 
 /**
  * @brief Verify presence of DS18B20 sensor by checking reset pulse timing
  * @return 1 if device present, 0 if no device detected
  */
-unsigned DS18B20::check_presence() {
+bool DS18B20::check_presence() {
     // Validate that reset pulse duration is within specification
     // and presence pulse timing indicates a responding device
     return (ctx.edge[0] >= RESET_PULSE_MIN) && (ctx.edge[0] <= RESET_PULSE_MAX) &&

@@ -10,16 +10,17 @@ public:
     void processEvent(const Event &e) {}
 
 private:
-    float setpoint_ = 25.0f;
-    float current_ = 0.0f;
-    bool heater_on_ = false;
+    float m_setpoint = 25.0f;
+    float m_current = 0.0f;
+    static constexpr float hysteresis = 0.3f;
+    bool m_heater_on = false;
 
     void control() {
-        if (current_ < setpoint_ - 0.3f && !heater_on_) {
-            heater_on_ = true;
+        if (m_current < m_setpoint - hysteresis && !m_heater_on) {
+            m_heater_on = true;
             // включить реле
-        } else if (current_ > setpoint_ + 0.3f && heater_on_) {
-            heater_on_ = false;
+        } else if (m_current > m_setpoint + hysteresis && m_heater_on) {
+            m_heater_on = false;
             // выключить реле
         }
     }

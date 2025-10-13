@@ -1,0 +1,61 @@
+name: Build STM32F0 Firmware (Windows Debug & Release)
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install ARM GCC Toolchain
+        shell: bash
+        run: |
+          choco install -y gcc-arm-embedded
+          arm-none-eabi-gcc --version
+
+      # ---------- Debug сборка ----------
+      - name: Configure Debug
+        shell: bash
+        run: |
+          mkdir -p build/debug
+          cd build/debug
+          cmake -DCMAKE_BUILD_TYPE=Debug ../..
+
+      - name: Build Debug
+        shell: bash
+        run: |
+          cd build/debug
+          cmake --build . --config Debug -j$(nproc)
+
+      - name: Upload Debug firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: stm32f0-firmware-debug
+          path: build/debug/*.bin
+
+      # ---------- Release сборка ----------
+      - name: Configure Release
+        shell: bash
+        run: |
+          mkdir -p build/release
+          cd build/release
+          cmake -DCMAKE_BUILD_TYPE=Release ../..
+
+      - name: Build Release
+        shell: bash
+        run: |
+          cd build/release
+          cmake --build . --config Release -j$(nproc)
+
+      - name: Upload Release firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: stm32f0-firmware-release
+          path: build/release/*.bin
