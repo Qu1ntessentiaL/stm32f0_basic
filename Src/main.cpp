@@ -3,80 +3,96 @@
  * I2C1_SCL [PB6] - R12
  * UART1_RX [PA10] - X2.1
  * UART1_TX [PA9] - X2.2
+ * Resistor R8  -> PA7
+ * Resistor R10 -> PA11
+ * Resistor R13 -> PA5
+ * Resistor R14 -> PA6
+ * Resistor R18 -> PA0
+ * Resistor R20 -> PA12
  */
 
-#include "Scheduler.hpp"
-#include "EventQueue.hpp"
-#include "ThermostatController.hpp"
+#include "ch.h"
 
 #include "GpioDriver.hpp"
 #include "Button.hpp"
 #include "RccDriver.hpp"
 #include "TimDriver.hpp"
-#include "UsartDriver.hpp"
 
 #include "ht1621.hpp"
 #include "ds18b20.hpp"
 #include "uart.hpp"
 
+__attribute__((section(".bss")))
+stkalign_t main_thread_stack[128 / sizeof(stkalign_t)];
+
+stkalign_t __main_thread_stack_base__ = (stkalign_t) &main_thread_stack[0];
+stkalign_t __main_thread_stack_end__ = (stkalign_t) &main_thread_stack[sizeof(main_thread_stack) /
+                                                                       sizeof(main_thread_stack[0])];
+
+
 TimDriver tim17(TIM17);
 
 DS18B20 *sens_ptr = nullptr;
-/*
-void Tim17Callback() {
-    auto e1 = S1_Ptr->tick();
 
-    switch (e1) {
-        case Button<>::Event::Pressed:  // Действие при нажатии
-            break;
-        case Button<>::Event::Held:     // Действие при удержании
-            break;
-        case Button<>::Event::Released: // Действие при отпускании
-            break;
-        default:
-            break;
+THD_WORKING_AREA(waThread1, 256);
+
+THD_FUNCTION(Thread1, arg) {
+
+    (void) arg;
+
+    while (true) {
+        sens_ptr->poll();
+        chThdSleepMilliseconds(50);
     }
 }
-*/
 
-void task_sensor() { sens_ptr->poll(); }
+THD_WORKING_AREA(waThread2, 128);
 
-void task_uart() { uart_poll_tx(); }
+THD_FUNCTION(Thread2, arg) {
+
+    (void) arg;
+
+    while (true) {
+        uart_poll_tx();
+        chThdSleepMilliseconds(50);
+    }
+}
+
+THD_WORKING_AREA(waThread3, 64);
+
+THD_FUNCTION(Thread3, arg) {
+
+    (void) arg;
+
+    while (true) {
+        chThdSleepMilliseconds(500);
+    }
+}
+
+/*
+ * Threads creation table, one entry per thread.
+ */
+THD_TABLE_BEGIN
+                THD_TABLE_THREAD(0, "Thread1", waThread1, Thread1, NULL)
+                THD_TABLE_THREAD(1, "Thread2", waThread2, Thread2, NULL)
+                THD_TABLE_THREAD(4, "Thread3", waThread3, Thread3, NULL)
+THD_TABLE_END
 
 int main() {
     RccDriver::InitMax48MHz();
     //InitMCO(); // MCO connected to R9 resistor (PA8-pin)
     SysTick_Config(SystemCoreClock / 1000);
-    /*
-    static Button<> BtnS1(GPIOA, 1),
-            BtnS2(GPIOA, 2),
-            BtnS3(GPIOA, 3),
-            BtnS4(GPIOA, 4);
 
-    S1_Ptr = &BtnS1;
-    */
-    GpioDriver sda(GPIOB, 7),
-            scl(GPIOB, 6);
+    chSysInit();
 
-    GpioDriver r8(GPIOA, 7),
-            r10(GPIOA, 11),
-            r13(GPIOA, 5),
-            r14(GPIOA, 6),
-            r18(GPIOA, 0),
-            r20(GPIOA, 12);
-
-    static GpioDriver light(GPIOB, 0),
+    static GpioDriver
+            light(GPIOB, 0),
             buzzer(GPIOB, 1);
 
     light.Init(GpioDriver::Mode::Output,
                GpioDriver::OutType::PushPull,
                GpioDriver::Pull::None,
                GpioDriver::Speed::Medium);
-    /*
-    tim17.Init(4799, 10);
-    tim17.setCallback(Tim17Callback);
-    tim17.Start();
-    */
 
     static DS18B20 sens{};
     sens_ptr = &sens;
@@ -94,16 +110,10 @@ int main() {
     disp.ShowDigit(4, 0, false);
     disp.ShowInt(25, true);
 
-    EventQueue eventQueue;
-    ThermostatController controller;
     Buttons buttons(GPIOA, 1,
                     GPIOA, 2,
                     GPIOA, 3,
                     GPIOA, 4);
 
-    TaskScheduler scheduler;
-    scheduler.init();
-    scheduler.addTask(task_uart, 50);
-    scheduler.addTask(task_sensor, 5);
-    scheduler.run();
+    while (true) {}
 }

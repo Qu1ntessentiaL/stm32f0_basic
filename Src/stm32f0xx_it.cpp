@@ -1,20 +1,18 @@
-#include "Scheduler.hpp"
+#include "ch.h"
 #include "TimDriver.hpp"
 
 extern TimDriver tim17;
 
 extern "C" {
 
-void NMI_Handler(void) {
-
-}
+// void NMI_Handler(void) {}
 
 void HardFault_Handler(void) {
     while (1) {}
 }
 
 extern "C" void SysTick_Handler(void) {
-    TaskScheduler::ms_ticks++;
+    chSysTimerHandlerI();
 }
 
 void EXTI0_1_IRQHandler(void) {}
