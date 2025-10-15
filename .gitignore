@@ -1,3 +1,5 @@
 .idea/
 cmake-build-*/
 build/
+Drivers/os/*
+!Drivers/os/CMakeLists.txt
