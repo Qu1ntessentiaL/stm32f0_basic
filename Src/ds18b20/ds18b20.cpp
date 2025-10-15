@@ -126,7 +126,7 @@ uint8_t DS18B20::check_scratchpad_crc() {
     uint8_t crc = 0;
     // Process each byte in the scratchpad (first 8 bytes) for CRC calculation
     for (uint8_t i = 0; i < DS18B20_CRC8_BYTES; i++) {
-        uint8_t inByte = ctx.scratchpad[i];
+        uint8_t inByte = m_ctx.scratchpad[i];
         // Process each bit in the byte using Dallas/Maxim CRC8 algorithm
         for (uint8_t b = 0; b < 8; b++) {
             uint8_t mix = (crc ^ inByte) & 0x01;
@@ -149,10 +149,10 @@ void DS18B20::decode_scratchpad() {
         for (unsigned bit = 0; bit < DS18B20_BITS_PER_BYTE; ++bit) {
             // Determine if pulse represents logic '1' or '0' based on duration threshold
             // Pulses <= 10µs are considered logic '1', > 10µs are logic '0'
-            if (ctx.pulse[bit_start + bit] <= SHORT_PULSE_MAX) {
-                ctx.scratchpad[byte] |= (1 << bit);  // Set bit to 1
+            if (m_ctx.pulse[bit_start + bit] <= SHORT_PULSE_MAX) {
+                m_ctx.scratchpad[byte] |= (1 << bit);  // Set bit to 1
             } else {
-                ctx.scratchpad[byte] &= ~(1 << bit);  // Reset bit to 0
+                m_ctx.scratchpad[byte] &= ~(1 << bit);  // Reset bit to 0
             }
         }
     }
@@ -164,7 +164,7 @@ void DS18B20::decode_scratchpad() {
  */
 int16_t DS18B20::decode_temperature() {
     // Combine LSB and MSB of temperature register (bytes 0 and 1)
-    auto raw = (int16_t) ((ctx.scratchpad[1] << 8) | ctx.scratchpad[0]);
+    auto raw = (int16_t) ((m_ctx.scratchpad[1] << 8) | m_ctx.scratchpad[0]);
     // Convert to tenths of degrees Celsius (raw value in 1/16th degrees)
     // Multiply by 10 then divide by 16 to get value in tenths of degree
     return static_cast<int16_t>((raw * 10) >> 4);
@@ -177,8 +177,8 @@ int16_t DS18B20::decode_temperature() {
 bool DS18B20::check_presence() {
     // Validate that reset pulse duration is within specification
     // and presence pulse timing indicates a responding device
-    return (ctx.edge[0] >= RESET_PULSE_MIN) && (ctx.edge[0] <= RESET_PULSE_MAX) &&
-           (ctx.edge[1] >= PRESENCE_PULSE_MIN) && (ctx.edge[1] <= PRESENCE_PULSE_MAX);
+    return (m_ctx.edge[0] >= RESET_PULSE_MIN) && (m_ctx.edge[0] <= RESET_PULSE_MAX) &&
+           (m_ctx.edge[1] >= PRESENCE_PULSE_MIN) && (m_ctx.edge[1] <= PRESENCE_PULSE_MAX);
 }
 
 /**
@@ -211,7 +211,7 @@ void DS18B20::reset_bus() {
     // Configure DMA to capture presence pulse edge timestamps
     DMA1_Channel3->CCR = 0;                           // Clear DMA configuration
     DMA1_Channel3->CPAR = (uint32_t) &TIM1->CCR2;      // DMA destination: timer capture register
-    DMA1_Channel3->CMAR = (uint32_t) ctx.edge;        // DMA source: edge timestamp buffer
+    DMA1_Channel3->CMAR = (uint32_t) m_ctx.edge;        // DMA source: edge timestamp buffer
     DMA1_Channel3->CNDTR = CAPTURE_BUF_SIZE;          // Number of transfers (2 edges)
     // Enable DMA with memory increment
     DMA1_Channel3->CCR = DMA_CCR_MINC | DMA_CCR_PSIZE_0 | DMA_CCR_MSIZE_0 | DMA_CCR_EN;
@@ -270,7 +270,7 @@ void DS18B20::read_data() {
     // Configure DMA to capture pulse durations into pulse buffer
     DMA1_Channel3->CCR = 0;                                            // Clear DMA configuration
     DMA1_Channel3->CPAR = (uint32_t) &TIM1->CCR2;                       // DMA destination: capture register
-    DMA1_Channel3->CMAR = (uint32_t) ctx.pulse;                        // DMA source: pulse duration buffer
+    DMA1_Channel3->CMAR = (uint32_t) m_ctx.pulse;                        // DMA source: pulse duration buffer
     DMA1_Channel3->CNDTR = DS18B20_SCRATCHPAD_BITS;                    // Number of transfers (72 bits)
     DMA1_Channel3->CCR = DMA_CCR_MINC | DMA_CCR_PSIZE_0 | DMA_CCR_EN;  // Enable DMA with memory increment
     TIM1->CR1 = TIM_CR1_OPM | TIM_CR1_CEN;   // Start timer in one-pulse mode
@@ -338,15 +338,15 @@ void DS18B20::poll() {
     TIM1->SR = 0;
 
     // State machine to manage 1-Wire communication sequence
-    switch (ctx.current_state) {
+    switch (m_ctx.current_state) {
         case FsmStates::IDLE: // IDLE - Initialize for new measurement cycle
 #if defined ELAPSED_TIME
             elapsed_time = DWT->CYCCNT;
 #endif
             // Initialize union memory (fills with 0xFF pattern)
-            ctx.fill_union = (uint64_t) -1;
+            m_ctx.fill_union = (uint64_t) -1;
             // Transition to START state
-            ctx.current_state = FsmStates::START;
+            m_ctx.current_state = FsmStates::START;
             /* fallthrough to START state immediately */
             /* fallthrough  */
 
@@ -356,7 +356,7 @@ void DS18B20::poll() {
             // Initiate 1-Wire bus reset sequence
             reset_bus();
             // Transition to CONVERT state
-            ctx.current_state = FsmStates::CONVERT;
+            m_ctx.current_state = FsmStates::CONVERT;
             break;
 
         case FsmStates::CONVERT: // CONVERT - Check presence and send convert command
@@ -365,7 +365,7 @@ void DS18B20::poll() {
                 // Device present - send temperature conversion command
                 send_command(conv_cmd.data());
                 // Transition to WAIT state to allow conversion time
-                ctx.current_state = FsmStates::WAIT;
+                m_ctx.current_state = FsmStates::WAIT;
             } else {
                 // No device present - report error and pause
                 ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_NO_SENSOR
@@ -376,7 +376,7 @@ void DS18B20::poll() {
                 // Start inter-measurement pause
                 start_cycle_pause();
                 // Return to IDLE state
-                ctx.current_state = FsmStates::IDLE;
+                m_ctx.current_state = FsmStates::IDLE;
             }
             break;
 
@@ -384,14 +384,14 @@ void DS18B20::poll() {
             // Start timer for conversion wait period (750ms typical)
             wait_conversion();
             // Transition to CONTINUE state
-            ctx.current_state = FsmStates::CONTINUE;
+            m_ctx.current_state = FsmStates::CONTINUE;
             break;
 
         case FsmStates::CONTINUE: // CONTINUE - Prepare for data readback
             // Initiate second 1-Wire bus reset sequence
             reset_bus();
             // Transition to REQUEST state
-            ctx.current_state = FsmStates::REQUEST;
+            m_ctx.current_state = FsmStates::REQUEST;
             break;
 
         case FsmStates::REQUEST: // REQUEST - Check presence and send read command
@@ -400,7 +400,7 @@ void DS18B20::poll() {
                 // Device present - send read scratchpad command
                 send_command(read_cmd.data());
                 // Transition to READ state
-                ctx.current_state = FsmStates::READ;
+                m_ctx.current_state = FsmStates::READ;
             } else {
                 // No device present - report error and pause
                 ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_NO_SENSOR
@@ -411,7 +411,7 @@ void DS18B20::poll() {
                 // Start inter-measurement pause
                 start_cycle_pause();
                 // Return to IDLE state
-                ctx.current_state = FsmStates::IDLE;
+                m_ctx.current_state = FsmStates::IDLE;
             }
             break;
 
@@ -419,7 +419,7 @@ void DS18B20::poll() {
             // Initiate scratchpad data read using timer capture and DMA
             read_data();
             // Transition to DECODE state
-            ctx.current_state = FsmStates::DECODE;
+            m_ctx.current_state = FsmStates::DECODE;
             break;
 
         case FsmStates::DECODE: // DECODE - Process received data and report temperature
@@ -429,7 +429,7 @@ void DS18B20::poll() {
             ds18b20_led_control(0);
 
             // Validate CRC and report temperature or error
-            if (ctx.scratchpad[8] == check_scratchpad_crc()) {
+            if (m_ctx.scratchpad[8] == check_scratchpad_crc()) {
                 // CRC valid - decode and report temperature
                 ds18b20_temp_ready(decode_temperature()
 #if defined ELAPSED_TIME
@@ -448,7 +448,7 @@ void DS18B20::poll() {
             // Start inter-measurement pause period
             start_cycle_pause();
             // Return to IDLE state for next measurement cycle
-            ctx.current_state = FsmStates::IDLE;
+            m_ctx.current_state = FsmStates::IDLE;
             break;
 
         default:
@@ -459,7 +459,7 @@ void DS18B20::poll() {
 #endif
             );
             // Return to IDLE state
-            ctx.current_state = FsmStates::IDLE;
+            m_ctx.current_state = FsmStates::IDLE;
             break;
     }
 }

@@ -39,7 +39,7 @@ class DS18B20 {
      * @brief DS18B20 driver context structure using union for memory efficiency
      * @note Different stages of communication use the same memory for different purposes
      */
-    typedef struct {
+    struct Context {
         union {
             volatile uint16_t edge[36];   /**< Edge timestamps for presence detection */
             volatile uint8_t pulse[72];   /**< Pulse durations for data decoding */
@@ -47,9 +47,7 @@ class DS18B20 {
             uint64_t fill_union;          /**< Utility field for filling the union */
         };
         FsmStates current_state;            /**< Current state of the state machine */
-    } DS18B20_ctx_t;
-
-    DS18B20_ctx_t ctx;
+    } m_ctx;
 
     void ForceUpdateEvent(TIM_TypeDef *tim);
 
