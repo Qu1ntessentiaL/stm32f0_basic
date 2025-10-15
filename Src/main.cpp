@@ -34,6 +34,8 @@ TimDriver tim17(TIM17);
 
 DS18B20 *sens_ptr = nullptr;
 
+HT1621B *disp_ptr = nullptr;
+
 THD_WORKING_AREA(waThread1, 256);
 
 THD_FUNCTION(Thread1, arg) {
@@ -94,6 +96,12 @@ int main() {
                GpioDriver::Pull::None,
                GpioDriver::Speed::Medium);
 
+    static HT1621B disp;
+    disp_ptr = &disp;
+
+    disp.ShowLetter(5, 't');
+    disp.ShowDigit(4, 0, false);
+
     static DS18B20 sens{};
     sens_ptr = &sens;
     sens.init();   // Initialize DS18B20 driver (non-blocking)
@@ -105,10 +113,6 @@ int main() {
     Usart1.Init(SystemCoreClock);
     Usart1.write_str("1234");
     */
-    static HT1621B disp;
-    disp.ShowLetter(5, 't');
-    disp.ShowDigit(4, 0, false);
-    disp.ShowInt(25, true);
 
     Buttons buttons(GPIOA, 1,
                     GPIOA, 2,
