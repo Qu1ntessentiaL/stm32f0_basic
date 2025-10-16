@@ -20,12 +20,12 @@ add_executable(${PROJECT_NAME}
 include(Src/app.cmake)
 
 add_subdirectory(Drivers/CMSIS)
-add_subdirectory(Drivers/os)
+# add_subdirectory(Drivers/os)
 
 # stm32f1xx_hal_driver заменить на cmsis, если нет надобности в HAL
 target_link_libraries(${PROJECT_NAME} PRIVATE
         cmsis
-        chibios-nano
+        # chibios-nano
 )
 
 # Найти objdump в PATH

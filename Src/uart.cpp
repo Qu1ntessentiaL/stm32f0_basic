@@ -121,11 +121,11 @@ void ds18b20_led_control(unsigned action) {
     if (action) {
         // Turn LED on (PC13 low due to pull-up LED configuration)
         // BSRR BR register: atomic bit reset operation
-        GPIOB->BSRR = GPIO_BSRR_BR_0;
+        GPIOA->BSRR = GPIO_BSRR_BR_11;
     } else {
         // Turn LED off (PC13 high)
         // BSRR BS register: atomic bit set operation
-        GPIOB->BSRR = GPIO_BSRR_BS_0;
+        GPIOA->BSRR = GPIO_BSRR_BS_11;
     }
 }
 
@@ -191,6 +191,7 @@ void ds18b20_temp_ready(int16_t temp) {
 #endif
         uart_write_str("\r\n");            // And newline
 
+        disp_ptr->Clear();
         disp_ptr->ShowInt(whole, true); // Show on display
     }
 }

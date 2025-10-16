@@ -5,9 +5,9 @@ file(GLOB_RECURSE SOURCES
 )
 
 # Исключаем некоторые файлы
-# list(FILTER SOURCES EXCLUDE REGEX
-#         ${CMAKE_CURRENT_LIST_DIR}/example/*.*
-# )
+list(FILTER SOURCES EXCLUDE REGEX
+        ${CMAKE_CURRENT_LIST_DIR}/chlib_stub.c
+)
 
 # Добавляем найденные исходники в target_sources
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${SOURCES})
