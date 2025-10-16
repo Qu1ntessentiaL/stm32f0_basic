@@ -179,7 +179,7 @@ void HT1621B::Flush() {
     }
 }
 
-inline void HT1621B::Clear(bool flushNow) {
+void HT1621B::Clear(bool flushNow) {
     memset(m_vram, 0, sizeof(m_vram));
     if (flushNow) Flush();
 }
