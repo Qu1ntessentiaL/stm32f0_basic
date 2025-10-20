@@ -14,29 +14,16 @@
 #include "GpioDriver.hpp"
 #include "Button.hpp"
 #include "RccDriver.hpp"
-#include "TimDriver.hpp"
-#include "I2C/TwiDriver.hpp"
 
 #include "ht1621.hpp"
 #include "ds18b20.hpp"
 #include "uart.hpp"
 
-#include "Controller/Controller.hpp"
-
-/*
-__attribute__((section(".bss")))
-stkalign_t main_thread_stack[128 / sizeof(stkalign_t)];
-
-stkalign_t __main_thread_stack_base__ = (stkalign_t) &main_thread_stack[0];
-stkalign_t __main_thread_stack_end__ = (stkalign_t) &main_thread_stack[sizeof(main_thread_stack) /
-                                                                       sizeof(main_thread_stack[0])];
-*/
-
 DS18B20 *sens_ptr = nullptr;
 
 HT1621B *disp_ptr = nullptr;
 
-int main() {
+__NO_RETURN int main() {
     RccDriver::InitMax48MHz();
     SysTick_Config(SystemCoreClock / 1000);
 
@@ -66,7 +53,7 @@ int main() {
     hardware_init(); // Initialize hardware peripherals (non-blocking)
     uart_write_str("DS18B20 demo starting...\r\n"); // Enqueue startup message to UART buffer
 
-    Buttons buttons(GPIOA, 1,
+    __unused Buttons buttons(GPIOA, 1,
                     GPIOA, 2,
                     GPIOA, 3,
                     GPIOA, 4);
@@ -74,7 +61,7 @@ int main() {
     disp_ptr->ShowDate(1, 7, 94, true);
 
     while (true) {
-        //sens_ptr->poll();
+        sens_ptr->poll();
         uart_poll_tx();
     }
 }
