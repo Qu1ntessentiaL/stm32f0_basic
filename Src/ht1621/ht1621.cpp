@@ -197,14 +197,14 @@ void HT1621B::ShowDigit(uint8_t position, uint8_t digit, bool withDot, bool flus
     const uint8_t base = (5 - position) * 4;
 
     // Отрисовка цифры
-    for (const auto &seg: digits[digit]) {
+    for (const auto &seg: m_digits[digit]) {
         if (seg.addr == 0) break;
         SetData(seg.addr + base, seg.val);
     }
 
     // Добавляем точку, если нужно
     if (withDot && position > 0) {
-        const auto &dot = dots[5 - position];
+        const auto &dot = m_dots[5 - position];
         SetData(dot.addr, dot.val);
     }
 
@@ -221,30 +221,30 @@ void HT1621B::ShowLetter(uint8_t position, char c, bool flushNow) {
 
     const uint8_t base = (5 - position) * 4;
 
-    const Segment* segs = nullptr;
+    const Segment *segs = nullptr;
     uint8_t segCount = 0;
 
     switch (c) {
-        case 'A': segs = letters[0]; segCount = 5; break;
-        case 'b': segs = letters[1]; segCount = 4; break;
-        case 'C': segs = letters[2]; segCount = 3; break;
-        case 'd': segs = letters[3]; segCount = 4; break;
-        case 'E': segs = letters[4]; segCount = 4; break;
-        case 'F': segs = letters[5]; segCount = 3; break;
-        case 'G': segs = letters[6]; segCount = 4; break;
-        case 'h': segs = letters[7]; segCount = 4; break;
-        case 'I': segs = letters[8]; segCount = 2; break;
-        case 'J': segs = letters[9]; segCount = 3; break;
-        case 'L': segs = letters[10]; segCount = 2; break;
-        case 'n': segs = letters[11]; segCount = 3; break;
-        case 'o': segs = letters[12]; segCount = 3; break;
-        case 'P': segs = letters[13]; segCount = 4; break;
-        case 'r': segs = letters[14]; segCount = 2; break;
-        case 'S': segs = letters[15]; segCount = 4; break;
-        case 't': segs = letters[16]; segCount = 3; break;
-        case 'U': segs = letters[17]; segCount = 4; break;
-        case '-': segs = letters[19]; segCount = 1; break;
-        case '_': segs = letters[20]; segCount = 1; break;
+        case 'A': segs = m_letters[0]; segCount = 5; break;
+        case 'b': segs = m_letters[1]; segCount = 4; break;
+        case 'C': segs = m_letters[2]; segCount = 3; break;
+        case 'd': segs = m_letters[3]; segCount = 4; break;
+        case 'E': segs = m_letters[4]; segCount = 4; break;
+        case 'F': segs = m_letters[5]; segCount = 3; break;
+        case 'G': segs = m_letters[6]; segCount = 4; break;
+        case 'h': segs = m_letters[7]; segCount = 4; break;
+        case 'I': segs = m_letters[8]; segCount = 2; break;
+        case 'J': segs = m_letters[9]; segCount = 3; break;
+        case 'L': segs = m_letters[10]; segCount = 2; break;
+        case 'n': segs = m_letters[11]; segCount = 3; break;
+        case 'o': segs = m_letters[12]; segCount = 3; break;
+        case 'P': segs = m_letters[13]; segCount = 4; break;
+        case 'r': segs = m_letters[14]; segCount = 2; break;
+        case 'S': segs = m_letters[15]; segCount = 4; break;
+        case 't': segs = m_letters[16]; segCount = 3; break;
+        case 'U': segs = m_letters[17]; segCount = 4; break;
+        case '-': segs = m_letters[19]; segCount = 1; break;
+        case '_': segs = m_letters[20]; segCount = 1; break;
         default: return;
     }
 
@@ -295,8 +295,42 @@ void HT1621B::ShowInt(int value, bool flushNow) {
 
 void HT1621B::ShowChargeLevel(uint8_t level, bool flushNow) {
     if (level > 3) level = 0;
-    SetData(26, chargeLevels[level][0]);
-    SetData(27, chargeLevels[level][1]);
+    SetData(26, m_chargeLevels[level][0]);
+    SetData(27, m_chargeLevels[level][1]);
+    if (flushNow) Flush();
+}
+
+void HT1621B::ShowDate(uint8_t day, uint8_t month, uint8_t year, bool flushNow) {
+    // Обрезаем значения
+    day   %= 100;
+    month %= 100;
+    year  %= 100;
+
+    if (day == 0 || day > 31 ||
+        month == 0 || month > 12) {
+        return;
+    }
+
+    Clear(false);
+
+    // Формируем цифры в порядке, соответствующем ShowDigit(pos,...)
+    // pos 0 = правый символ (год единицы), pos 5 = левый (десятки дня)
+    uint8_t digits[6];
+    digits[0] = year % 10;
+    digits[1] = year / 10;
+    digits[2] = month % 10;
+    digits[3] = month / 10;
+    digits[4] = day % 10;
+    digits[5] = day / 10;
+
+    // Выводим справа налево: позиция 0 — правый сегмент, позиция 5 — левый
+    // Формат: DD.MM.YY
+    for (uint8_t pos = 0; pos < 6; ++pos) {
+        bool dot = false;
+        if (pos == 2 || pos == 4) dot = true; // точки между D и M, между M и Y
+        ShowDigit(pos, digits[pos], dot, false);
+    }
+
     if (flushNow) Flush();
 }
 

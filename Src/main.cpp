@@ -15,10 +15,13 @@
 #include "Button.hpp"
 #include "RccDriver.hpp"
 #include "TimDriver.hpp"
+#include "I2C/TwiDriver.hpp"
 
 #include "ht1621.hpp"
 #include "ds18b20.hpp"
 #include "uart.hpp"
+
+#include "Controller/Controller.hpp"
 
 /*
 __attribute__((section(".bss")))
@@ -68,8 +71,10 @@ int main() {
                     GPIOA, 3,
                     GPIOA, 4);
 
+    disp_ptr->ShowDate(1, 7, 94, true);
+
     while (true) {
-        sens_ptr->poll();
+        //sens_ptr->poll();
         uart_poll_tx();
     }
 }

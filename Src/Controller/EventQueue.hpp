@@ -2,6 +2,7 @@
 
 #include <array>
 #include <optional>
+#include <cstdint>
 
 enum class EventType : uint8_t {
     None,
@@ -23,21 +24,22 @@ public:
     static constexpr size_t MaxEvents = 16;
 
     bool push(const Event &ev) {
-        size_t next = (head_ + 1) % MaxEvents;
-        if (next == tail_) return false; // Очередь полна
-        buffer_[head_] = ev;
-        head_ = next;
+        size_t next = (m_head + 1) % MaxEvents;
+        if (next == m_tail) return false; // Очередь полна
+        buffer_[m_head] = ev;
+        m_head = next;
         return true;
     }
 
     std::optional<Event> pop() {
-        if (tail_ == head_) return std::nullopt; // Пуста
-        Event ev = buffer_[tail_];
-        tail_ = (tail_ + 1) % MaxEvents;
+        if (m_tail == m_head) return std::nullopt; // Пуста
+        Event ev = buffer_[m_tail];
+        m_tail = (m_tail + 1) % MaxEvents;
         return ev;
     }
 
 private:
     std::array<Event, MaxEvents> buffer_{};
-    size_t head_ = 0, tail_ = 0;
+    size_t m_head = 0,
+            m_tail = 0;
 };

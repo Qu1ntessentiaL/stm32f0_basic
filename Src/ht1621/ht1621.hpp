@@ -11,7 +11,7 @@ class HT1621B {
         uint8_t val;
     };
 
-    static constexpr Segment digits[10][4] = {
+    static constexpr Segment m_digits[10][4] = {
             /* 0 */ {{3, 1}, {2, 2}, {1, 3}, {4, 3}},
             /* 1 */ {{3, 1}, {4, 2}},
             /* 2 */ {{1, 2}, {2, 3}, {4, 3}},
@@ -25,7 +25,7 @@ class HT1621B {
     };
 
     // Латинские буквы для 7-сегментного индикатора
-    static constexpr Segment letters[][5] = {
+    static constexpr Segment m_letters[][5] = {
             /* A */ {{1,3}, {2,1}, {3,1}, {4,3}},
             /* b */ {{1,3}, {2,3}, {3,1}},
             /* C */ {{1,3}, {2,2}, {4,1}},
@@ -48,7 +48,7 @@ class HT1621B {
             /* _ */ {{2,2}},
     };
 
-    static constexpr Segment dots[6] = {
+    static constexpr Segment m_dots[6] = {
             {0x03, 0x03},
             {0x07, 0x03},
             {0x0B, 0x03},
@@ -57,7 +57,7 @@ class HT1621B {
             {0x17, 0x03},
     };
 
-    static constexpr uint8_t chargeLevels[4][2] = {
+    static constexpr uint8_t m_chargeLevels[4][2] = {
             {1, 0},
             {1, 2},
             {1, 3},
@@ -108,4 +108,6 @@ public:
     void ShowDigit(uint8_t position, uint8_t digit, bool withDot, bool flushNow = false);
 
     void ShowChargeLevel(uint8_t, bool flushNow = false);
+
+    void ShowDate(uint8_t day, uint8_t month, uint8_t year, bool flushNow = false);
 };
