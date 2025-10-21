@@ -23,7 +23,7 @@ DS18B20 *sens_ptr = nullptr;
 
 HT1621B *disp_ptr = nullptr;
 
-__NO_RETURN int main() {
+int main() {
     RccDriver::InitMax48MHz();
     SysTick_Config(SystemCoreClock / 1000);
 
@@ -57,11 +57,10 @@ __NO_RETURN int main() {
                     GPIOA, 2,
                     GPIOA, 3,
                     GPIOA, 4);
-
-    disp_ptr->ShowDate(1, 7, 94, true);
+    disp_ptr->ShowDate(22, 12, 94, true);
 
     while (true) {
-        sens_ptr->poll();
+        // sens_ptr->poll();
         uart_poll_tx();
     }
 }

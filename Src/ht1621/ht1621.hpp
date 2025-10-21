@@ -49,12 +49,12 @@ class HT1621B {
     };
 
     static constexpr Segment m_dots[6] = {
-            {0x03, 0x03},
-            {0x07, 0x03},
-            {0x0B, 0x03},
-            {0x0F, 0x03},
-            {0x13, 0x03},
-            {0x17, 0x03},
+            {0x03, 0x02},
+            {0x07, 0x02},
+            {0x0B, 0x02},
+            {0x0F, 0x02},
+            {0x13, 0x02},
+            {0x17, 0x02},
     };
 
     static constexpr uint8_t m_chargeLevels[4][2] = {
@@ -100,8 +100,6 @@ public:
     void ShowLetter(uint8_t position, char c, bool flushNow = false);
 
     void ShowInt(int value, bool flushNow = false);
-
-    // void ShowDouble(double value, uint8_t decimals, bool flushNow = false);
 
     // void ShowFloat(float value, uint8_t decimals, bool flushNow = false);
 

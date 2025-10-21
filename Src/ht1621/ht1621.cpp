@@ -24,35 +24,7 @@ static inline void itoa_simple(int value, char *buf) {
     *buf = '\0';
 }
 
-// Расходует очень много Flash
 /*
-static inline void ftoa_simple(double val, char *buf, uint8_t decimals) {
-    if (val < 0) {
-        *buf++ = '-';
-        val = -val;
-    }
-
-    int int_part = (int) val;
-    double frac = val - int_part;
-
-    // Целая часть
-    char intbuf[12];
-    itoa_simple(int_part, intbuf);
-    for (char *p = intbuf; *p; ++p) *buf++ = *p;
-
-    *buf++ = '.';
-
-    // Дробная часть
-    for (uint8_t i = 0; i < decimals; ++i) {
-        frac *= 10;
-        int digit = (int) frac;
-        *buf++ = '0' + digit;
-        frac -= digit;
-    }
-
-    *buf = '\0';
-}
-
 static inline void ftoa_simple_f(float val, char *buf, uint8_t decimals) {
     if (val < 0) {
         *buf++ = '-';
@@ -110,16 +82,17 @@ void HT1621B::WriteBit(uint8_t bit) {
         m_data_pin.Set();
     else
         m_data_pin.Reset();
-
-    m_write_pin.Set();
+    __NOP();
+    __NOP();
+    __NOP();
     m_write_pin.Reset();
+    __NOP();
     __NOP();
     m_write_pin.Set();
 }
 
 void HT1621B::WriteCommand(Commands cmd) {
     uint8_t cmd_v = cmd;
-    m_cs_pin.Set();
     m_cs_pin.Reset();
     WriteBit(1);
     WriteBit(0);
@@ -132,14 +105,12 @@ void HT1621B::WriteCommand(Commands cmd) {
         cmd_v <<= 1;
     }
     WriteBit(0);
-    m_data_pin.Set();
     m_cs_pin.Set();
 }
 
 void HT1621B::WriteData(uint8_t address, uint8_t data) {
     if (address >= 32) return;
 
-    m_cs_pin.Set();
     m_cs_pin.Reset();
 
     WriteBit(1);
@@ -160,7 +131,6 @@ void HT1621B::WriteData(uint8_t address, uint8_t data) {
         data >>= 1;
     }
 
-    m_data_pin.Set();
     m_cs_pin.Set();
 }
 
@@ -334,53 +304,7 @@ void HT1621B::ShowDate(uint8_t day, uint8_t month, uint8_t year, bool flushNow) 
     if (flushNow) Flush();
 }
 
-// Расходует очень много Flash
 /*
-void HT1621B::ShowDouble(double value, uint8_t decimals, bool flushNow) {
-    char buf[16];
-    ftoa_simple(value, buf, decimals);
-
-    bool negative = (value < 0);
-
-    // Вычисляем длину строки
-    uint8_t len = 0;
-    for (; buf[len]; ++len);
-
-    // Считаем количество цифр (без точки и минуса)
-    uint8_t l_digits = 0;
-    for (uint8_t i = 0; i < len; ++i)
-        if (buf[i] >= '0' && buf[i] <= '9')
-            l_digits++;
-
-    // Проверяем, влезает ли всё в 6 индикаторов
-    // Минус и точка считаются как отдельные позиции
-    uint8_t needed = l_digits + (negative ? 1 : 0);
-    if (needed > 6) {
-        // Показать "------" при переполнении
-        for (uint8_t i = 0; i < 6; ++i)
-            SetData(i * 4 + 2, 1);
-        if (flushNow) Flush();
-        return;
-    }
-
-    // Начинаем вывод справа налево
-    uint8_t pos = 0;
-    for (int i = len - 1; i >= 0 && pos < 6; --i) {
-        if (buf[i] == '.' || buf[i] == '-') continue;
-
-        bool dot = (i < len - 1 && buf[i + 1] == '.');
-        ShowDigit(pos++, buf[i] - '0', dot);
-    }
-
-    // Если отрицательное и ещё есть место — показываем минус
-    if (negative && pos < 6) {
-        uint8_t base = (5 - pos) * 4;
-        SetData(base + 2, 1); // Горизонтальный сегмент «–»
-    }
-
-    if (flushNow) Flush();
-}
-
 void HT1621B::ShowFloat(float value, uint8_t decimals, bool flushNow) {
     char buf[16];
     ftoa_simple_f(value, buf, decimals);
