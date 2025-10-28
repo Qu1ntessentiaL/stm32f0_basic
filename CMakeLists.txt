@@ -65,23 +65,20 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
 # Показывает таблицу функций (адрес, размер, тип, имя)
 add_custom_target(symbol_sizes
         COMMAND ${CMAKE_OBJCOPY} -R .comment $<TARGET_FILE:${PROJECT_NAME}> tmp.elf
-        COMMAND arm-none-eabi-nm -S --size-sort tmp.elf | grep " T "
-        COMMAND ${CMAKE_COMMAND} -E rm -f tmp.elf
+        COMMAND arm-none-eabi-nm -S --size-sort tmp.elf > symbol_sizes.txt
+        COMMAND ${CMAKE_COMMAND} -E echo "================ Symbol sizes ================"
+        COMMAND ${CMAKE_COMMAND} -E cat symbol_sizes.txt
+        COMMAND ${CMAKE_COMMAND} -E rm -f tmp.elf symbol_sizes.txt
         DEPENDS ${PROJECT_NAME}
         COMMENT "Symbol sizes (sorted by size):"
 )
 
 # Показывает только секцию .text с функциями
 add_custom_target(text_info
-        COMMAND arm-none-eabi-objdump -t $<TARGET_FILE:${PROJECT_NAME}> | grep ".text"
+        COMMAND ${CMAKE_COMMAND} -E echo "================ .text section ================"
+        COMMAND arm-none-eabi-objdump -t $<TARGET_FILE:${PROJECT_NAME}> | findstr ".text"
         DEPENDS ${PROJECT_NAME}
         COMMENT "Functions in .text section:"
-)
-
-
-add_custom_target(sections_info
-        COMMAND arm-none-eabi-nm -S --size-sort $<TARGET_FILE:${PROJECT_NAME}>
-        COMMENT "Sections info:"
 )
 
 add_custom_target(erase_flash

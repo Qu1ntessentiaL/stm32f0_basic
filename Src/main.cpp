@@ -19,6 +19,8 @@
 #include "ds18b20.hpp"
 #include "uart.hpp"
 
+#include "FsmTest.hpp"
+
 DS18B20 *sens_ptr = nullptr;
 
 HT1621B *disp_ptr = nullptr;
