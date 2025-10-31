@@ -59,10 +59,12 @@ _Min_Heap_Size = 0x0;    /* required amount of heap  */
 _Min_Stack_Size = 0x200; /* required amount of stack */
 
 /* Specify the memory areas */
+/* Flash memory 0x08000000 - 0x08008000 */
 MEMORY
 {
 RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 4K
-FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 32K
+FLASH (rx)     : ORIGIN = 0x08000000, LENGTH = 0x7FC0
+FW_INFO (r)    : ORIGIN = 0x08007FC0, LENGTH = 0x40
 }
 
 /* Define output sections */
@@ -173,7 +175,10 @@ SECTIONS
     . = ALIGN(8);
   } >RAM
 
-  
+  .fw_info :
+  {
+    KEEP(*(.fw_info))
+  } >FW_INFO
 
   /* Remove information from the standard libraries */
   /DISCARD/ :

@@ -28,6 +28,26 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         # chibios-nano
 )
 
+execute_process(
+        COMMAND git describe --tags --abbrev=0
+        OUTPUT_VARIABLE GIT_TAG
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+execute_process(
+        COMMAND git rev-parse --short HEAD
+        OUTPUT_VARIABLE GIT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+add_compile_definitions(
+        FW_GIT_TAG="${GIT_TAG}"
+        FW_GIT_HASH="${GIT_HASH}"
+)
+
+message(STATUS "FW_GIT_TAG = [${GIT_TAG}]")
+message(STATUS "GIT_HASH   = [${GIT_HASH}]")
+
 # Найти objdump в PATH
 find_program(OBJDUMP arm-none-eabi-objdump REQUIRED)
 

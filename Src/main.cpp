@@ -10,6 +10,8 @@
  * Resistor R18 -> PA0
  * Resistor R20 -> PA12
  */
+#include <cstdio>
+#include "fw_info.h"
 
 #include "GpioDriver.hpp"
 #include "Button.hpp"
@@ -24,6 +26,26 @@
 DS18B20 *sens_ptr = nullptr;
 
 HT1621B *disp_ptr = nullptr;
+
+void print_fw_info() {
+    char buf[128];
+
+    // Проверим magic
+    if (fw_info.magic != 0xDEADBEEF) {
+        uart_write_str("FW info not valid\r\n");
+        return;
+    }
+
+    uart_write_str("=== Firmware Info ===\r\n");
+
+    snprintf(buf, sizeof(buf), "Tag: %s\r\n", fw_info.tag);
+    uart_write_str(buf);
+
+    snprintf(buf, sizeof(buf), "Commit: %s\r\n", fw_info.commit);
+    uart_write_str(buf);
+
+    uart_write_str("=====================\r\n");
+}
 
 int main() {
     RccDriver::InitMax48MHz();
@@ -41,9 +63,9 @@ int main() {
     light.Reset();
 
     blue_led.Init(GpioDriver::Mode::Output,
-               GpioDriver::OutType::PushPull,
-               GpioDriver::Pull::None,
-               GpioDriver::Speed::Medium);
+                  GpioDriver::OutType::PushPull,
+                  GpioDriver::Pull::None,
+                  GpioDriver::Speed::Medium);
 
     static HT1621B disp;
     disp_ptr = &disp;
@@ -53,16 +75,17 @@ int main() {
     sens.init();   // Initialize DS18B20 driver (non-blocking)
 
     hardware_init(); // Initialize hardware peripherals (non-blocking)
+    print_fw_info();
     uart_write_str("DS18B20 demo starting...\r\n"); // Enqueue startup message to UART buffer
 
     __unused Buttons buttons(GPIOA, 1,
-                    GPIOA, 2,
-                    GPIOA, 3,
-                    GPIOA, 4);
+                             GPIOA, 2,
+                             GPIOA, 3,
+                             GPIOA, 4);
     disp_ptr->ShowDate(22, 12, 94, true);
 
     while (true) {
-        // sens_ptr->poll();
+        sens_ptr->poll();
         uart_poll_tx();
     }
 }
