@@ -21,7 +21,7 @@
 #include "ds18b20.hpp"
 #include "uart.hpp"
 
-#include "FsmTest.hpp"
+#include "my_fsm.hpp"
 
 DS18B20 *sens_ptr = nullptr;
 
