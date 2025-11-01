@@ -161,6 +161,19 @@ void HT1621B::Init() {
     Clear(true);
 }
 
+void HT1621B::ShowDot(uint8_t position, bool enable, bool flushNow) {
+    if (position >= 6) return;
+
+    const auto &dot = m_dots[5 - position];
+
+    if (enable)
+        SetData(dot.addr, dot.val);
+    else
+        SetData(dot.addr, 0); // Очищаем точку
+
+    if (flushNow) Flush();
+}
+
 void HT1621B::ShowDigit(uint8_t position, uint8_t digit, bool withDot, bool flushNow) {
     if (position >= 6 || digit > 9) return;
 
@@ -174,8 +187,7 @@ void HT1621B::ShowDigit(uint8_t position, uint8_t digit, bool withDot, bool flus
 
     // Добавляем точку, если нужно
     if (withDot && position > 0) {
-        const auto &dot = m_dots[5 - position];
-        SetData(dot.addr, dot.val);
+        ShowDot(position, true);
     }
 
     if (flushNow) Flush();

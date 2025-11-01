@@ -95,6 +95,8 @@ public:
 
     void Init();
 
+    void ShowDot(uint8_t position, bool enable, bool flushNow = false);
+
     void ShowFull(bool flushNow = false);
 
     void ShowLetter(uint8_t position, char c, bool flushNow = false);

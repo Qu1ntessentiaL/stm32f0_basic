@@ -49,6 +49,7 @@ void print_fw_info() {
 
 int main() {
     RccDriver::InitMax48MHz();
+    RccDriver::IWDG_Init();
     SysTick_Config(SystemCoreClock / 1000);
 
     static GpioDriver
@@ -82,10 +83,12 @@ int main() {
                              GPIOA, 2,
                              GPIOA, 3,
                              GPIOA, 4);
-    disp_ptr->ShowDate(22, 12, 94, true);
+    //disp_ptr->ShowDate(22, 12, 94, true);
+    disp_ptr->ShowDigit(5,8,true, true);
 
     while (true) {
-        sens_ptr->poll();
-        uart_poll_tx();
+        //sens_ptr->poll();
+        //uart_poll_tx();
+        RccDriver::IWDG_Reload();
     }
 }

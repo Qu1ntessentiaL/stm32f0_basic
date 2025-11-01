@@ -189,9 +189,10 @@ void ds18b20_temp_ready(int16_t temp) {
         uart_write_int(t / 72); // Display time elapsed
         uart_write_str(" us)"); // Parenthesis
 #endif
-        uart_write_str("\r\n");            // And newline
+        uart_write_str("\r\n");     // And newline
 
         disp_ptr->Clear();
-        disp_ptr->ShowInt(whole, true); // Show on display
+        disp_ptr->ShowInt(temp); // Show on display
+        disp_ptr->ShowDot(1, true, true);
     }
 }

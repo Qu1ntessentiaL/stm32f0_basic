@@ -34,4 +34,34 @@ namespace RccDriver {
         RCC->CFGR |= RCC_CFGR_MCO_SYSCLK;
         RCC->CFGR |= RCC_CFGR_MCOPRE_DIV16;
     }
+
+    void IWDG_Init() {
+        // 1. Включить LSI (если еще не включен)
+        RCC->CSR |= RCC_CSR_LSION;
+        while ((RCC->CSR & RCC_CSR_LSIRDY) == 0) {
+            // Ждем стабилизации генератора (~100 мс)
+        }
+
+        // 2. Разблокировать доступ к регистрами PR и RLR
+        IWDG->KR = 0x5555;
+
+        // 3. Настроить предделитель (PR)
+        // PR = 6 -> делитель = 256
+        IWDG->PR = 6;
+
+        // 4. Настроить reload (RLR)
+        // RLR = 145 -> ~1 сек (145 + 1) * 256 / 37000 ~ 1.01 с
+        IWDG->RLR = 145;
+
+        // 5. Обновить счётчик, чтобы сразу не сработал
+        IWDG->KR = 0xAAAA;
+
+        // 6. Запустить watchdog
+        IWDG->KR = 0xCCCC;
+    }
+
+    void IWDG_Reload() {
+        // Обновление watchdog
+        IWDG->KR = 0xAAAA;
+    }
 }
