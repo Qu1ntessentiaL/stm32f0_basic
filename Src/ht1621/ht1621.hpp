@@ -11,6 +11,12 @@ class HT1621B {
         uint8_t val;
     };
 
+    enum class WriteMode : uint8_t {
+        Replace,
+        SetBit,
+        ClearBit
+    };
+
     static constexpr Segment m_digits[10][4] = {
             /* 0 */ {{3, 1}, {2, 2}, {1, 3}, {4, 3}},
             /* 1 */ {{3, 1}, {4, 2}},
@@ -87,7 +93,7 @@ class HT1621B {
 public:
     HT1621B();
 
-    void SetData(uint8_t address, uint8_t data);
+    void SetData(uint8_t address, uint8_t data, WriteMode mode = WriteMode::Replace);
 
     void Flush();
 

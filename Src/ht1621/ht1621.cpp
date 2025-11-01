@@ -138,9 +138,20 @@ void HT1621B::WriteData(uint8_t address, uint8_t data) {
  * @defgroup Функции для работы с VRAM
  */
 
-void HT1621B::SetData(uint8_t address, uint8_t data) {
-    if (address < sizeof(m_vram))
-        m_vram[address] = data;
+void HT1621B::SetData(uint8_t address, uint8_t data, WriteMode mode) {
+    if (address >= sizeof(m_vram)) return;
+
+    switch (mode) {
+        case WriteMode::Replace:
+            m_vram[address] = data;
+            break;
+        case WriteMode::SetBit:
+            m_vram[address] |= data;
+            break;
+        case WriteMode::ClearBit:
+            m_vram[address] &= ~data;
+            break;
+    }
 }
 
 void HT1621B::Flush() {
@@ -166,10 +177,7 @@ void HT1621B::ShowDot(uint8_t position, bool enable, bool flushNow) {
 
     const auto &dot = m_dots[5 - position];
 
-    if (enable)
-        SetData(dot.addr, dot.val);
-    else
-        SetData(dot.addr, 0); // Очищаем точку
+    SetData(dot.addr, dot.val, enable ? WriteMode::SetBit : WriteMode::ClearBit);
 
     if (flushNow) Flush();
 }
