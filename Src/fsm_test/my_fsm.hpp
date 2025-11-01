@@ -1,37 +1,34 @@
 #pragma once
 
+#include <cstdint>
 #include "tinyfsm.hpp"
 
 // Определяем события
-struct Start : tinyfsm::Event {
+struct ButtonPressed : tinyfsm::Event {
 };
-struct Done : tinyfsm::Event {
+struct ButtonReleased : tinyfsm::Event {
 };
-struct Fail : tinyfsm::Event {
+struct TimerTick : tinyfsm::Event {
 };
-struct Reset : tinyfsm::Event {
+struct ShortPress : tinyfsm::Event {
+};
+struct LongPress : tinyfsm::Event {
 };
 
 // Базовый класс FSM
-class SensorFsm : public tinyfsm::Fsm<SensorFsm> {
+class ButtonFsm : public tinyfsm::Fsm<ButtonFsm> {
 public:
-    virtual void react(Start const &) {}
+    static uint16_t press_time; // Счетчик времени удержания
 
-    virtual void react(Done const &) {}
+    void react(tinyfsm::Event const &) {}
 
-    virtual void react(Fail const &) {}
+    virtual void react(ButtonPressed const &) {}
 
-    virtual void react(Reset const &) {}
+    virtual void react(ButtonReleased const &) {}
+
+    virtual void react(TimerTick const &) {}
 
     void entry() {}
 
     void exit() {}
 };
-
-class Idle;
-
-class Measure;
-
-class Send;
-
-class Error;

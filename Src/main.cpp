@@ -22,10 +22,17 @@
 #include "uart.hpp"
 
 #include "my_fsm.hpp"
+#include "TimDriver.hpp"
+
+TimDriver *tim17_ptr = nullptr;
 
 DS18B20 *sens_ptr = nullptr;
 
 HT1621B *disp_ptr = nullptr;
+
+void tim17_callback() {
+    __NOP();
+}
 
 void print_fw_info() {
     char buf[128];
@@ -68,6 +75,12 @@ int main() {
                   GpioDriver::Pull::None,
                   GpioDriver::Speed::Medium);
 
+    static TimDriver tim17(TIM17);
+    tim17.setCallback(tim17_callback);
+    tim17.Init(47999, 500);
+    tim17.Start();
+    tim17_ptr = &tim17;
+
     static HT1621B disp;
     disp_ptr = &disp;
 
@@ -83,7 +96,7 @@ int main() {
                              GPIOA, 2,
                              GPIOA, 3,
                              GPIOA, 4);
-    disp_ptr->ShowDate(22, 12, 94, true);
+    disp_ptr->ShowDate(22, 12, 94);
 
     while (true) {
         sens_ptr->poll();

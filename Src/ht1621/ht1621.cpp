@@ -24,37 +24,6 @@ static inline void itoa_simple(int value, char *buf) {
     *buf = '\0';
 }
 
-/*
-static inline void ftoa_simple_f(float val, char *buf, uint8_t decimals) {
-    if (val < 0) {
-        *buf++ = '-';
-        val = -val;
-    }
-
-    auto int_part = (uint32_t) val;
-    float frac = val - (float) int_part;
-
-    // Целая часть
-    char intbuf[12];
-    itoa_simple(int_part, intbuf);
-    for (char *p = intbuf; *p; ++p) *buf++ = *p;
-
-    if (decimals > 0) {
-        *buf++ = '.';
-
-        // Дробная часть
-        for (uint8_t i = 0; i < decimals; ++i) {
-            frac *= 10.0f;
-            auto d = (uint8_t) frac;
-            *buf++ = '0' + d;
-            frac -= d;
-        }
-    }
-
-    *buf = '\0';
-}
-*/
-
 HT1621B::HT1621B() : m_cs_pin(GPIOB, 5),
                      m_write_pin(GPIOB, 4),
                      m_data_pin(GPIOB, 3) {
@@ -323,49 +292,3 @@ void HT1621B::ShowDate(uint8_t day, uint8_t month, uint8_t year, bool flushNow) 
 
     if (flushNow) Flush();
 }
-
-/*
-void HT1621B::ShowFloat(float value, uint8_t decimals, bool flushNow) {
-    char buf[16];
-    ftoa_simple_f(value, buf, decimals);
-
-    bool negative = (value < 0);
-
-    // Считаем символы
-    uint8_t len = 0;
-    for (; buf[len]; ++len);
-
-    // Подсчёт цифр (без точки и минуса)
-    uint8_t l_digits = 0;
-    for (uint8_t i = 0; i < len; ++i)
-        if (buf[i] >= '0' && buf[i] <= '9')
-            l_digits++;
-
-    // Проверка переполнения: минус + цифры ≤ 6
-    uint8_t needed = l_digits + (negative ? 1 : 0);
-    if (needed > 6) {
-        // Показать "------"
-        for (uint8_t i = 0; i < 6; ++i)
-            SetData(i * 4 + 2, 1);
-        if (flushNow) Flush();
-        return;
-    }
-
-    // Вывод справа налево
-    uint8_t pos = 0;
-    for (int i = len - 1; i >= 0 && pos < 6; --i) {
-        if (buf[i] == '.' || buf[i] == '-') continue;
-
-        bool dot = (i < len - 1 && buf[i + 1] == '.');
-        ShowDigit(pos++, buf[i] - '0', dot, false);
-    }
-
-    // Если отрицательное и есть место
-    if (negative && pos < 6) {
-        uint8_t base = (5 - pos) * 4;
-        SetData(base + 2, 1); // Минус
-    }
-
-    if (flushNow) Flush();
-}
-*/

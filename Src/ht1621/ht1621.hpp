@@ -109,11 +109,9 @@ public:
 
     void ShowInt(int value, bool flushNow = false);
 
-    // void ShowFloat(float value, uint8_t decimals, bool flushNow = false);
-
     void ShowDigit(uint8_t position, uint8_t digit, bool withDot, bool flushNow = false);
 
-    void ShowChargeLevel(uint8_t, bool flushNow = false);
+    void ShowChargeLevel(uint8_t level, bool flushNow = false);
 
     void ShowDate(uint8_t day, uint8_t month, uint8_t year, bool flushNow = false);
 };
