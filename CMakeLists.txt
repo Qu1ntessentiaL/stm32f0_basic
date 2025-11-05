@@ -29,7 +29,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 
 execute_process(
-        COMMAND git describe --tags --abbrev=0
+        COMMAND git tag --points-at HEAD
         OUTPUT_VARIABLE GIT_TAG
         OUTPUT_STRIP_TRAILING_WHITESPACE
 )
