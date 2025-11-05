@@ -26,20 +26,20 @@ public:
     bool push(const Event &ev) {
         size_t next = (m_head + 1) % MaxEvents;
         if (next == m_tail) return false; // Очередь полна
-        buffer_[m_head] = ev;
+        m_buffer[m_head] = ev;
         m_head = next;
         return true;
     }
 
     std::optional<Event> pop() {
         if (m_tail == m_head) return std::nullopt; // Пуста
-        Event ev = buffer_[m_tail];
+        Event ev = m_buffer[m_tail];
         m_tail = (m_tail + 1) % MaxEvents;
         return ev;
     }
 
 private:
-    std::array<Event, MaxEvents> buffer_{};
+    std::array<Event, MaxEvents> m_buffer{};
     size_t m_head = 0,
             m_tail = 0;
 };

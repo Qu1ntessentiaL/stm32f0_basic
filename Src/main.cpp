@@ -21,7 +21,6 @@
 #include "ds18b20.hpp"
 #include "uart.hpp"
 
-#include "my_fsm.hpp"
 #include "TimDriver.hpp"
 
 TimDriver *tim17_ptr = nullptr;
@@ -31,7 +30,9 @@ DS18B20 *sens_ptr = nullptr;
 HT1621B *disp_ptr = nullptr;
 
 void tim17_callback() {
-    __NOP();
+    static uint8_t i = 0;
+    disp_ptr->ShowChargeLevel(i++, true);
+    if (i > 3) i = 0;
 }
 
 void print_fw_info() {
@@ -55,6 +56,7 @@ void print_fw_info() {
 }
 
 int main() {
+    __disable_irq();
     RccDriver::InitMax48MHz();
     RccDriver::IWDG_Init();
     SysTick_Config(SystemCoreClock / 1000);
@@ -77,7 +79,7 @@ int main() {
 
     static TimDriver tim17(TIM17);
     tim17.setCallback(tim17_callback);
-    tim17.Init(47999, 500);
+    tim17.Init(47999, 100);
     tim17.Start();
     tim17_ptr = &tim17;
 
@@ -96,8 +98,8 @@ int main() {
                              GPIOA, 2,
                              GPIOA, 3,
                              GPIOA, 4);
-    disp_ptr->ShowDate(22, 12, 94);
-
+    //disp_ptr->ShowDate(22, 12, 94, true);
+    __enable_irq();
     while (true) {
         sens_ptr->poll();
         uart_poll_tx();

@@ -97,7 +97,9 @@ public:
 
     void Flush();
 
-    void Clear(bool flushNow = false);
+    void FullClear(bool flushNow = false);
+
+    void ClearSegArea(bool flushNow = false);
 
     void Init();
 

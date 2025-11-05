@@ -191,7 +191,7 @@ void ds18b20_temp_ready(int16_t temp) {
 #endif
         uart_write_str("\r\n");     // And newline
 
-        disp_ptr->Clear();
+        disp_ptr->ClearSegArea();
         disp_ptr->ShowInt(temp); // Show on display
         disp_ptr->ShowDot(1, true, true);
     }

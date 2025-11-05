@@ -129,8 +129,17 @@ void HT1621B::Flush() {
     }
 }
 
-void HT1621B::Clear(bool flushNow) {
+void HT1621B::FullClear(bool flushNow) {
     memset(m_vram, 0, sizeof(m_vram));
+    if (flushNow) Flush();
+}
+
+void HT1621B::ClearSegArea(bool flushNow) {
+    // Очистим только 6 x 4 байта сегментов
+    for (uint8_t i = 0; i < 6 * 4; ++i) {
+        m_vram[i] = 0;
+    }
+
     if (flushNow) Flush();
 }
 
@@ -138,7 +147,7 @@ void HT1621B::Init() {
     WriteCommand(Commands::Bias05);
     WriteCommand(Commands::SysEn);
     WriteCommand(Commands::LcdOn);
-    Clear(true);
+    FullClear(true);
 }
 
 void HT1621B::ShowDot(uint8_t position, bool enable, bool flushNow) {
@@ -202,8 +211,8 @@ void HT1621B::ShowLetter(uint8_t position, char c, bool flushNow) {
         case 'S': segs = m_letters[15]; segCount = 4; break;
         case 't': segs = m_letters[16]; segCount = 3; break;
         case 'U': segs = m_letters[17]; segCount = 4; break;
-        case '-': segs = m_letters[19]; segCount = 1; break;
-        case '_': segs = m_letters[20]; segCount = 1; break;
+        case '-': segs = m_letters[18]; segCount = 1; break;
+        case '_': segs = m_letters[19]; segCount = 1; break;
         default: return;
     }
 
@@ -270,7 +279,7 @@ void HT1621B::ShowDate(uint8_t day, uint8_t month, uint8_t year, bool flushNow) 
         return;
     }
 
-    Clear(false);
+    FullClear(false);
 
     // Формируем цифры в порядке, соответствующем ShowDigit(pos,...)
     // pos 0 = правый символ (год единицы), pos 5 = левый (десятки дня)
