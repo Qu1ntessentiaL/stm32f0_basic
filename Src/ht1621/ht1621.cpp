@@ -144,7 +144,7 @@ void HT1621B::ClearSegArea(bool flushNow) {
 }
 
 void HT1621B::Init() {
-    WriteCommand(Commands::Bias05);
+    WriteCommand(Commands::Bias12);
     WriteCommand(Commands::SysEn);
     WriteCommand(Commands::LcdOn);
     FullClear(true);
@@ -188,36 +188,61 @@ void HT1621B::ShowLetter(uint8_t position, char c, bool flushNow) {
     if (position >= 6) return;
 
     const uint8_t base = (5 - position) * 4;
-
     const Segment *segs = nullptr;
-    uint8_t segCount = 0;
 
     switch (c) {
-        case 'A': segs = m_letters[0]; segCount = 5; break;
-        case 'b': segs = m_letters[1]; segCount = 4; break;
-        case 'C': segs = m_letters[2]; segCount = 3; break;
-        case 'd': segs = m_letters[3]; segCount = 4; break;
-        case 'E': segs = m_letters[4]; segCount = 4; break;
-        case 'F': segs = m_letters[5]; segCount = 3; break;
-        case 'G': segs = m_letters[6]; segCount = 4; break;
-        case 'h': segs = m_letters[7]; segCount = 4; break;
-        case 'I': segs = m_letters[8]; segCount = 2; break;
-        case 'J': segs = m_letters[9]; segCount = 3; break;
-        case 'L': segs = m_letters[10]; segCount = 2; break;
-        case 'n': segs = m_letters[11]; segCount = 3; break;
-        case 'o': segs = m_letters[12]; segCount = 3; break;
-        case 'P': segs = m_letters[13]; segCount = 4; break;
-        case 'r': segs = m_letters[14]; segCount = 2; break;
-        case 'S': segs = m_letters[15]; segCount = 4; break;
-        case 't': segs = m_letters[16]; segCount = 3; break;
-        case 'U': segs = m_letters[17]; segCount = 4; break;
-        case '-': segs = m_letters[18]; segCount = 1; break;
-        case '_': segs = m_letters[19]; segCount = 1; break;
+        case 'A': segs = m_letters[0]; break;
+        case 'b': segs = m_letters[1]; break;
+        case 'C': segs = m_letters[2]; break;
+        case 'd': segs = m_letters[3]; break;
+        case 'E': segs = m_letters[4]; break;
+        case 'F': segs = m_letters[5]; break;
+        case 'G': segs = m_letters[6]; break;
+        case 'h': segs = m_letters[7]; break;
+        case 'I': segs = m_letters[8]; break;
+        case 'J': segs = m_letters[9]; break;
+        case 'L': segs = m_letters[10]; break;
+        case 'n': segs = m_letters[11]; break;
+        case 'o': segs = m_letters[12]; break;
+        case 'P': segs = m_letters[13]; break;
+        case 'r': segs = m_letters[14]; break;
+        case 't': segs = m_letters[15]; break;
+        case 'U': segs = m_letters[16]; break;
+        case 'X': segs = m_letters[17]; break;
+        case '-': segs = m_letters[18]; break;
+        case '_': segs = m_letters[19]; break;
+        //case ' ': segs = m_letters[20]; break;
         default: return;
     }
 
-    for (uint8_t i = 0; i < segCount; ++i) {
-        SetData(segs[i].addr + base, segs[i].val);
+    // Отрисовка всех непустых сегментов
+    for (uint8_t i = 0; i < 4; ++i) {
+        if (segs[i].val)
+            SetData(segs[i].addr + base, segs[i].val);
+    }
+
+    if (flushNow) Flush();
+}
+
+void HT1621B::ShowString(const char *str, bool flushNow) {
+    if (!str) return;
+
+    // Очищаем только сегменты цифр/символов, оставляем иконки нетронутыми
+    ClearSegArea(false);
+
+    // Вычисляем длину строки (не более 6 символов)
+    uint8_t len = 0;
+    while (str[len] && len < 6) len++;
+
+    // Позиции на индикаторе идут справа налево:
+    // pos = 0 (правый символ), pos = len - 1 (левый)
+    for (uint8_t i = 0; i < len; ++i) {
+        char c = str[len - 1 - i];  // Выводим в обратном порядке
+        if (c >= '0' && c <= '9') {
+            ShowDigit(i, c - '0', false, false);
+        } else {
+            ShowLetter(i, c, false);
+        }
     }
 
     if (flushNow) Flush();

@@ -99,10 +99,11 @@ int main() {
                              GPIOA, 3,
                              GPIOA, 4);
     //disp_ptr->ShowDate(22, 12, 94, true);
+    disp_ptr->ShowString("XXr5tU", true);
     __enable_irq();
     while (true) {
-        sens_ptr->poll();
-        uart_poll_tx();
+        //sens_ptr->poll();
+        //uart_poll_tx();
         RccDriver::IWDG_Reload();
     }
 }
