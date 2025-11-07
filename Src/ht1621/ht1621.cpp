@@ -296,13 +296,15 @@ void HT1621B::ShowInt(int value, bool flushNow) {
     if (flushNow) Flush();
 }
 
-void HT1621B::ShowChargeLevel(uint8_t level, bool enable, bool flushNow) {
-    if (level > 3) return;
+void HT1621B::ShowChargeLevel(uint8_t level, bool flushNow) {
+    if (level > 3) level = 3;
 
-    const auto &chargeLevel = m_chargeLevels[level];
+    // Перебираем все 4 сегмента батарейки
+    for (uint8_t i = 0; i < 4; ++i) {
+        const auto &seg = m_chargeLevels[i];
 
-    for (uint8_t i = 0; i <= level; i++) {
-        SetData(chargeLevel.addr, chargeLevel.val, enable ? WriteMode::SetBit : WriteMode::ClearBit);
+        // Если уровень >= i, зажигаем, иначе гасим
+        SetData(seg.addr, seg.val, (i <= level) ? WriteMode::SetBit : WriteMode::ClearBit);
     }
 
     if (flushNow) Flush();

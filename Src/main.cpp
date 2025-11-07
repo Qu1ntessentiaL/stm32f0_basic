@@ -99,8 +99,7 @@ int main() {
                              GPIOA, 3,
                              GPIOA, 4);
     __enable_irq();
-    //disp_ptr->SetData(26, 1, HT1621B::WriteMode::Replace);
-    disp_ptr->ShowChargeLevel(3, true, true);
+    disp_ptr->ShowChargeLevel(3, true);
     disp_ptr->Flush();
     while (true) {
         //sens_ptr->poll();

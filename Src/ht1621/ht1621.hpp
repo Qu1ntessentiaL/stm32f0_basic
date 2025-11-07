@@ -10,13 +10,13 @@ class HT1621B {
         uint8_t addr;
         uint8_t val;
     };
-    /*
+
     enum class WriteMode : uint8_t {
         Replace,
         SetBit,
         ClearBit
     };
-    */
+
     static constexpr Segment m_digits[10][4] = {
             /* 0 */ {{1, 3}, {2, 2}, {3, 1}, {4, 3}},
             /* 1 */ {{1, 0}, {2, 0}, {3, 1}, {4, 2}},
@@ -97,16 +97,10 @@ class HT1621B {
 
     void WriteData(uint8_t address, uint8_t data);
 
-public:
-    enum class WriteMode : uint8_t {
-        Replace,
-        SetBit,
-        ClearBit
-    };
-
-    HT1621B();
-
     void SetData(uint8_t address, uint8_t data, WriteMode mode = WriteMode::Replace);
+
+public:
+    HT1621B();
 
     void Flush();
 
@@ -130,7 +124,7 @@ public:
 
     void ShowDigit(uint8_t position, uint8_t digit, bool withDot, bool flushNow = false);
 
-    void ShowChargeLevel(uint8_t level, bool enable, bool flushNow = false);
+    void ShowChargeLevel(uint8_t level, bool flushNow = false);
 
     void ShowDate(uint8_t day, uint8_t month, uint8_t year, bool flushNow = false);
 };
