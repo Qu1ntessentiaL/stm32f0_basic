@@ -151,11 +151,21 @@ void HT1621B::Init() {
 }
 
 void HT1621B::ShowDot(uint8_t position, bool enable, bool flushNow) {
-    if (position >= 6) return;
+    if (position == 0 || position >= 6) return;
 
     const auto &dot = m_dots[5 - position];
 
     SetData(dot.addr, dot.val, enable ? WriteMode::SetBit : WriteMode::ClearBit);
+
+    if (flushNow) Flush();
+}
+
+void HT1621B::ShowSpecial(uint8_t type, bool enable, bool flushNow) {
+    if (type > 3) return;
+
+    const auto &special = m_specials[type];
+
+    SetData(special.addr, special.val, enable ? WriteMode::SetBit : WriteMode::ClearBit);
 
     if (flushNow) Flush();
 }
@@ -286,10 +296,15 @@ void HT1621B::ShowInt(int value, bool flushNow) {
     if (flushNow) Flush();
 }
 
-void HT1621B::ShowChargeLevel(uint8_t level, bool flushNow) {
-    if (level > 3) level = 0;
-    SetData(26, m_chargeLevels[level][0]);
-    SetData(27, m_chargeLevels[level][1]);
+void HT1621B::ShowChargeLevel(uint8_t level, bool enable, bool flushNow) {
+    if (level > 3) return;
+
+    const auto &chargeLevel = m_chargeLevels[level];
+
+    for (uint8_t i = 0; i <= level; i++) {
+        SetData(chargeLevel.addr, chargeLevel.val, enable ? WriteMode::SetBit : WriteMode::ClearBit);
+    }
+
     if (flushNow) Flush();
 }
 

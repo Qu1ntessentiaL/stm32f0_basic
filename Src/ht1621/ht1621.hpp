@@ -10,13 +10,13 @@ class HT1621B {
         uint8_t addr;
         uint8_t val;
     };
-
+    /*
     enum class WriteMode : uint8_t {
         Replace,
         SetBit,
         ClearBit
     };
-
+    */
     static constexpr Segment m_digits[10][4] = {
             /* 0 */ {{1, 3}, {2, 2}, {3, 1}, {4, 3}},
             /* 1 */ {{1, 0}, {2, 0}, {3, 1}, {4, 2}},
@@ -52,23 +52,29 @@ class HT1621B {
             /* X */ {{1,3}, {2,1}, {3,1}, {4,2}},
             /* - */ {{1,0}, {2,1}, {3,0}, {4,0}},
             /* _ */ {{1,0}, {2,2}, {3,0}, {4,0}},
-            /* {{1,0}, {2,0}, {3,0}, {4,0}}, */
+            /* Space {{1,0}, {2,0}, {3,0}, {4,0}}, */
     };
 
-    static constexpr Segment m_dots[6] = {
+    static constexpr Segment m_dots[5] = {
             {0x03, 0x02},
             {0x07, 0x02},
             {0x0B, 0x02},
             {0x0F, 0x02},
             {0x13, 0x02},
-            {0x17, 0x02},
     };
 
-    static constexpr uint8_t m_chargeLevels[4][2] = {
-            {1, 0},
-            {1, 2},
-            {1, 3},
-            {3, 3}
+    static constexpr Segment m_chargeLevels[4] = {
+            {0x1A, 1},
+            {0x1B, 2},
+            {0x1B, 1},
+            {0x1A, 2},
+    };
+
+    static constexpr Segment m_specials[4] = {
+            /* ->0<- */ {0x00, 0x01},
+            /*  NET  */ {0x00, 0x02},
+            /*   k   */ {0x17, 0x02},
+            /*   g   */ {0x19, 0x02},
     };
 
     enum Commands : uint8_t {
@@ -92,6 +98,12 @@ class HT1621B {
     void WriteData(uint8_t address, uint8_t data);
 
 public:
+    enum class WriteMode : uint8_t {
+        Replace,
+        SetBit,
+        ClearBit
+    };
+
     HT1621B();
 
     void SetData(uint8_t address, uint8_t data, WriteMode mode = WriteMode::Replace);
@@ -106,6 +118,8 @@ public:
 
     void ShowDot(uint8_t position, bool enable, bool flushNow = false);
 
+    void ShowSpecial(uint8_t type, bool enable, bool flushNow = false);
+
     void ShowFull(bool flushNow = false);
 
     void ShowLetter(uint8_t position, char c, bool flushNow = false);
@@ -116,7 +130,7 @@ public:
 
     void ShowDigit(uint8_t position, uint8_t digit, bool withDot, bool flushNow = false);
 
-    void ShowChargeLevel(uint8_t level, bool flushNow = false);
+    void ShowChargeLevel(uint8_t level, bool enable, bool flushNow = false);
 
     void ShowDate(uint8_t day, uint8_t month, uint8_t year, bool flushNow = false);
 };

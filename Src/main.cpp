@@ -31,7 +31,7 @@ HT1621B *disp_ptr = nullptr;
 
 void tim17_callback() {
     static uint8_t i = 0;
-    disp_ptr->ShowChargeLevel(i++, true);
+    //disp_ptr->ShowChargeLevel(i++, true);
     if (i > 3) i = 0;
 }
 
@@ -98,9 +98,10 @@ int main() {
                              GPIOA, 2,
                              GPIOA, 3,
                              GPIOA, 4);
-    //disp_ptr->ShowDate(22, 12, 94, true);
-    disp_ptr->ShowString("XXr5tU", true);
     __enable_irq();
+    //disp_ptr->SetData(26, 1, HT1621B::WriteMode::Replace);
+    disp_ptr->ShowChargeLevel(3, true, true);
+    disp_ptr->Flush();
     while (true) {
         //sens_ptr->poll();
         //uart_poll_tx();

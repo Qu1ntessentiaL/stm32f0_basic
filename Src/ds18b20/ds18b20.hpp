@@ -68,10 +68,10 @@ class DS18B20 {
     void wait_conversion() { start_timer(62500, 11); }
 
     /**
-     * @brief Start inter-measurement pause period (500ms)
+     * @brief Start inter-measurement pause period (timer arr_value [us] * rcr_value)
      * @note Non-blocking - starts timer for inter-measurement delay
      */
-    void start_cycle_pause() { start_timer(62500, 79); }
+    void start_cycle_pause() { start_timer(62500, 3); }
 
     void reset_bus();
 
