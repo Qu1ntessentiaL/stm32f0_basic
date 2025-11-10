@@ -23,11 +23,17 @@
 
 #include "TimDriver.hpp"
 
+#include "Controller.hpp"
+
 TimDriver *tim17_ptr = nullptr;
 
 DS18B20 *sens_ptr = nullptr;
 
 HT1621B *disp_ptr = nullptr;
+
+EventQueue *queue_ptr = nullptr;
+
+Controller *ctrl_ptr = nullptr;
 
 void tim17_callback() {
     static uint8_t i = 0;
@@ -58,8 +64,14 @@ void print_fw_info() {
 int main() {
     __disable_irq();
     RccDriver::InitMax48MHz();
-    RccDriver::IWDG_Init();
+    //RccDriver::IWDG_Init();
     SysTick_Config(SystemCoreClock / 1000);
+
+    static EventQueue queue;
+    queue_ptr = &queue;
+
+    static Controller ctrl;
+    ctrl_ptr = &ctrl;
 
     static GpioDriver
             light(GPIOB, 0),
@@ -83,6 +95,9 @@ int main() {
     tim17.Start();
     tim17_ptr = &tim17;
 
+    DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP;
+    DBGMCU->APB2FZ |= DBGMCU_APB2_FZ_DBG_TIM17_STOP;
+
     static HT1621B disp;
     disp_ptr = &disp;
 
@@ -94,14 +109,18 @@ int main() {
     print_fw_info();
     uart_write_str("DS18B20 demo starting...\r\n"); // Enqueue startup message to UART buffer
 
-    __unused Buttons buttons(GPIOA, 1,
-                             GPIOA, 2,
-                             GPIOA, 3,
-                             GPIOA, 4);
+    Buttons buttons(GPIOA, 1,
+                    GPIOA, 2,
+                    GPIOA, 3,
+                    GPIOA, 4);
     __enable_irq();
+
     while (true) {
-        //sens_ptr->poll();
+        sens_ptr->poll();
         uart_poll_tx();
+        buttons.poll(queue);
+        if (auto e = queue.pop())
+            ctrl.processEvent(*e);
         RccDriver::IWDG_Reload();
     }
 }
