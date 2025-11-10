@@ -136,8 +136,11 @@ void HT1621B::FullClear(bool flushNow) {
 
 void HT1621B::ClearSegArea(bool flushNow) {
     // Очистим только 6 x 4 байта сегментов
-    for (uint8_t i = 0; i < 6 * 4; ++i) {
-        m_vram[i] = 0;
+    for (uint8_t i = 1; i <= 6 * 4; ++i) {
+        if (i == 0x17)
+            m_vram[i] &= ~0b01; // Чтобы не очищать десятичные разделители
+        else
+            m_vram[i] = 0;
     }
 
     if (flushNow) Flush();
@@ -178,7 +181,7 @@ void HT1621B::ShowDigit(uint8_t position, uint8_t digit, bool withDot, bool flus
     // Отрисовка цифры
     for (const auto &seg: m_digits[digit]) {
         if (seg.addr == 0) break;
-        SetData(seg.addr + base, seg.val);
+        SetData(seg.addr + base, seg.val, seg.addr == 3 ? WriteMode::SetBit : WriteMode::Replace);
     }
 
     // Добавляем точку, если нужно
