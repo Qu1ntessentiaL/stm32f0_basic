@@ -4,14 +4,18 @@
 #include <optional>
 #include <cstdint>
 
+/**
+ * @brief All high-level events that can be handled by the controller.
+ */
 enum class EventType : uint8_t {
-    None,
-    ButtonS1,
-    ButtonS2,
-    ButtonS3,
-    ButtonS4,
-    TemperatureReady,
-    Tick100ms,
+    None,               ///< Placeholder event, carries no semantic meaning.
+    ButtonS1,           ///< User interacted with button S1 (value encodes press/hold/release).
+    ButtonS2,           ///< User interacted with button S2 (value encodes press/hold/release).
+    ButtonS3,           ///< Reserved button event.
+    ButtonS4,           ///< Reserved button event.
+    TemperatureReady,   ///< Fresh temperature sample is available (value holds Celsius degrees).
+    Tick100ms,          ///< Legacy periodic event (unused).
+    DisplayTimeout,     ///< Request to finish displaying the setpoint and revert to current temperature.
 };
 
 struct Event {

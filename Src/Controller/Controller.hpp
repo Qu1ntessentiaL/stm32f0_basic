@@ -1,60 +1,90 @@
 #pragma once
 
 #include "EventQueue.hpp"
-#include "ht1621.hpp"
+#include "SystemTime.h"
 
+/**
+ * @brief Высокоуровневый термостат с табличным конечным автоматом.
+ *
+ * Контроллер реагирует на нажатия кнопок и новые измерения температуры.
+ * Поведение описывается через таблицу переходов: каждая строка содержит
+ * исходное состояние, событие, необязательный guard и действие.
+ * Такой стиль делает расширение логики максимально наглядным.
+ */
 class Controller {
 public:
+    /**
+     * @brief Логические режимы работы термостата.
+     */
+    enum class State : uint8_t {
+        Idle,    ///< Цель достигнута, нагрев не требуется.
+        Heating, ///< Нужно греть, загорается зелёный светодиод.
+        Error    ///< Перегрев относительно цели, горит красный светодиод.
+    };
+
+    /**
+     * @brief Инициализировать внутренние структуры и обновить индикацию.
+     */
     void init();
 
+    /**
+     * @brief Передать событие в конечный автомат.
+     *
+     * @param e Событие от кнопок или датчика.
+     */
     void processEvent(const Event &e);
 
+    /**
+     * @brief Периодическая обработка фоновых задач (таймауты и пр.).
+     */
+    void poll();
+
 private:
-    enum class State {
-        Idle,
-        Heating,
-        Error,
-    };
+    using Guard = bool (Controller::*)(const Event &) const;
+    using Action = State (Controller::*)(const Event &);
 
-    State m_state = State::Idle;
-
-    /// Табличная структура переходов
+    /**
+     * @brief Строка таблицы переходов.
+     */
     struct Transition {
-        EventType signal;
-        State current;
-        State next;
-
-        void (Controller::*action)(const Event &e);
+        EventType signal;  ///< Какой тип события обрабатываем.
+        State source;      ///< В каком состоянии переход допустим.
+        Guard guard;       ///< Дополнительная проверка (nullptr — без условий).
+        Action action;     ///< Выполняемое действие, возвращает новое состояние.
     };
 
-    /// Методы действий (Action)
-    void onStartHeating(const Event &e);
+    // Guard-функции и действия
+    bool guardPress(const Event &e) const;
+    State actionTemperatureSample(const Event &e);
+    State actionDecreaseSetpoint(const Event &e);
+    State actionIncreaseSetpoint(const Event &e);
 
-    void onStopHeating(const Event &e);
+    // Управление состоянием
+    State evaluateState() const;
+    void applyState(State newState);
+    void updateOutputsFor(State state);
 
-    void onTemperatureReady(const Event &e);
+    // Работа с индикацией
+    void displayCurrentTemperature();
+    void displaySetpointTemperature();
+    void displayTemperature(char label, float value);
+    void ensureDisplayTimeout();
 
-    void onAdjustSetpoint(const Event &e);
+    // Вспомогательные функции
+    static bool timeReached(uint32_t now, uint32_t deadline);
 
-    void onError(const Event &e);
+    /// Таблица переходов конечного автомата (определена в .cpp).
+    static const Transition transitions[];
 
-    void control();
+    float m_setpoint = 25.0f;                   ///< Уставка, задаваемая пользователем (°C).
+    float m_current = 0.0f;                     ///< Текущая измеренная температура (°C).
+    State m_state = State::Idle;                ///< Состояние автомата.
+    bool m_showingSetpoint = false;             ///< Отображается ли сейчас уставка `t2`.
+    uint32_t m_setpointDisplayDeadline = 0;     ///< Момент возврата к отображению `t1`.
 
-    /// FSM таблица
-    static inline constexpr Transition transitions[] = {
-            {EventType::ButtonS4,         State::Idle,    State::Heating, &Controller::onStartHeating},
-            {EventType::ButtonS4,         State::Heating, State::Idle,    &Controller::onStopHeating},
-            {EventType::TemperatureReady, State::Heating, State::Heating, &Controller::onTemperatureReady},
-            {EventType::ButtonS1,         State::Heating, State::Heating, &Controller::onAdjustSetpoint},
-            {EventType::ButtonS2,         State::Heating, State::Heating, &Controller::onAdjustSetpoint},
-            {EventType::ButtonS1,         State::Idle,    State::Idle,    &Controller::onAdjustSetpoint},
-            {EventType::ButtonS2,         State::Idle,    State::Idle,    &Controller::onAdjustSetpoint},
-            {EventType::ButtonS4,         State::Error,   State::Idle,    &Controller::onStopHeating},
-    };
-
-    /// Данные
-    float m_setpoint = 25.0f;                   /// Уставка температуры
-    float m_current = 0.0f;                     /// Текущая температура
-    static constexpr float hysteresis = 0.3f;   /// Температурный гистерезис
-    bool m_heater_on = false;                   /// Флаг работы обогревателя
+    static constexpr uint32_t SetpointDisplayDurationMs = 3000; ///< Время показа `t2` после нажатия (мс).
+    static constexpr float SetpointStep = 0.5f;                 ///< Шаг изменения уставки (°C).
+    static constexpr float SetpointMin = -9.5f;                 ///< Минимально допустимая уставка (°C).
+    static constexpr float SetpointMax = 99.5f;                 ///< Максимально допустимая уставка (°C).
+    static constexpr float ErrorDelta = 3.0f;                   ///< Перегрев относительно цели (°C).
 };

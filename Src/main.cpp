@@ -117,6 +117,7 @@ int main() {
 
     static HT1621B disp{};
     disp_ptr = &disp;
+    ctrl.init();
 
     static DS18B20 sens{};
     sens_ptr = &sens;
@@ -138,6 +139,7 @@ int main() {
         buttons.poll(queue);
         if (auto e = queue.pop())
             ctrl.processEvent(*e);
+        ctrl.poll();
         RccDriver::IWDG_Reload();
     }
 }

@@ -1,5 +1,5 @@
 #include "uart.hpp"
-#include "ht1621.hpp"
+#include "Controller/EventQueue.hpp"
 
 // ======== Config: printing buffer size (power of two) ========
 #ifndef UART_TX_BUF_SIZE
@@ -21,7 +21,7 @@ static uint8_t uart_tx_head = 0;                     // write index - points to 
 static uint8_t uart_tx_tail = 0;                     // read index - points to oldest data
 static uint8_t uart_tx_buf[UART_TX_BUF_SIZE];        // circular buffer for UART transmission
 
-extern HT1621B *disp_ptr;
+extern EventQueue *queue_ptr;
 
 /**
  * @brief Non-blocking function to enqueue a single byte into the UART transmit buffer
@@ -191,8 +191,8 @@ void ds18b20_temp_ready(int16_t temp) {
 #endif
         uart_write_str("\r\n");     // And newline
 
-        disp_ptr->ClearSegArea();
-        disp_ptr->ShowInt(temp); // Show on display
-        disp_ptr->ShowDot(1, true, true);
+        if (queue_ptr) {
+            queue_ptr->push({EventType::TemperatureReady, temp / 10.0f});
+        }
     }
 }
