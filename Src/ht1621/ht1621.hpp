@@ -1,7 +1,6 @@
 #pragma once
 
-#include "cstring"
-#include "cmath"
+#include <cstring>
 #include "stm32f0xx.h"
 #include "GpioDriver.hpp"
 

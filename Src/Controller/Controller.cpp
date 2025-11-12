@@ -1,5 +1,6 @@
 #include "Controller.hpp"
 
+extern GpioDriver *red_led_ptr, *green_led_ptr;
 
 void Controller::init() {
     m_state = State::Idle;
@@ -8,10 +9,12 @@ void Controller::init() {
 /// Действия FSM
 void Controller::onStartHeating(const Event &e) {
     m_heater_on = true;
+    red_led_ptr->Set();
 }
 
 void Controller::onStopHeating(const Event &e) {
     m_heater_on = false;
+    red_led_ptr->Reset();
 }
 
 void Controller::onTemperatureReady(const Event &e) {

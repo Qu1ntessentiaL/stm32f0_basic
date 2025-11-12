@@ -1,4 +1,7 @@
 #include "TimDriver.hpp"
+#include "SystemTime.h"
+
+volatile uint32_t g_msTicks = 0;
 
 extern TimDriver *tim17_ptr;
 
@@ -8,7 +11,9 @@ extern "C" {
 
 void HardFault_Handler(void) { while (1) {}}
 
-void SysTick_Handler(void) {}
+void SysTick_Handler(void) {
+    ++g_msTicks;
+}
 
 void EXTI0_1_IRQHandler(void) {}
 
@@ -19,7 +24,9 @@ void EXTI4_15_IRQHandler(void) {}
 void USART1_IRQHandler(void) {}
 
 void TIM17_IRQHandler(void) {
-    tim17_ptr->handleIRQ();
+    if (tim17_ptr) {
+        tim17_ptr->handleIRQ();
+    }
 }
 
 }

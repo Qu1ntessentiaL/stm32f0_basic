@@ -35,6 +35,9 @@ EventQueue *queue_ptr = nullptr;
 
 Controller *ctrl_ptr = nullptr;
 
+GpioDriver *red_led_ptr = nullptr,
+        *green_led_ptr = nullptr;
+
 void tim17_callback() {
     static uint8_t i = 0;
     disp_ptr->ShowChargeLevel(i++, true);
@@ -64,7 +67,7 @@ void print_fw_info() {
 int main() {
     __disable_irq();
     RccDriver::InitMax48MHz();
-    //RccDriver::IWDG_Init();
+    RccDriver::IWDG_Init();
     SysTick_Config(SystemCoreClock / 1000);
 
     static EventQueue queue;
@@ -76,7 +79,12 @@ int main() {
     static GpioDriver
             light(GPIOB, 0),
             blue_led(GPIOA, 11),
+            green_led(GPIOA, 6),
+            red_led(GPIOA, 5),
             buzzer(GPIOB, 1);
+
+    green_led_ptr = &green_led;
+    red_led_ptr = &red_led;
 
     light.Init(GpioDriver::Mode::Output,
                GpioDriver::OutType::PushPull,
@@ -89,16 +97,25 @@ int main() {
                   GpioDriver::Pull::None,
                   GpioDriver::Speed::Medium);
 
+    green_led_ptr->Init(GpioDriver::Mode::Output,
+                        GpioDriver::OutType::PushPull,
+                        GpioDriver::Pull::None,
+                        GpioDriver::Speed::Medium);
+    green_led_ptr->Reset();
+
+    red_led_ptr->Init(GpioDriver::Mode::Output,
+                      GpioDriver::OutType::PushPull,
+                      GpioDriver::Pull::None,
+                      GpioDriver::Speed::Medium);
+    red_led_ptr->Reset();
+
     static TimDriver tim17(TIM17);
     tim17.setCallback(tim17_callback);
     tim17.Init(47999, 100);
     tim17.Start();
     tim17_ptr = &tim17;
 
-    DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP;
-    DBGMCU->APB2FZ |= DBGMCU_APB2_FZ_DBG_TIM17_STOP;
-
-    static HT1621B disp;
+    static HT1621B disp{};
     disp_ptr = &disp;
 
     static DS18B20 sens{};

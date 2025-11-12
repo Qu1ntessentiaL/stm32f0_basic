@@ -42,7 +42,7 @@ private:
 
     /// FSM таблица
     static inline constexpr Transition transitions[] = {
-            {EventType::ButtonS3,         State::Idle,    State::Heating, &Controller::onStartHeating},
+            {EventType::ButtonS4,         State::Idle,    State::Heating, &Controller::onStartHeating},
             {EventType::ButtonS4,         State::Heating, State::Idle,    &Controller::onStopHeating},
             {EventType::TemperatureReady, State::Heating, State::Heating, &Controller::onTemperatureReady},
             {EventType::ButtonS1,         State::Heating, State::Heating, &Controller::onAdjustSetpoint},
