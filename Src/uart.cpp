@@ -192,7 +192,8 @@ void ds18b20_temp_ready(int16_t temp) {
         uart_write_str("\r\n");     // And newline
 
         if (queue_ptr) {
-            queue_ptr->push({EventType::TemperatureReady, temp / 10.0f});
+            // temp уже в десятых долях градуса, передаём как есть
+            queue_ptr->push({EventType::TemperatureReady, temp});
         }
     }
 }

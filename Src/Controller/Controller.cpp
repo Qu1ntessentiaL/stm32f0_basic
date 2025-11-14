@@ -7,13 +7,6 @@ extern GpioDriver *red_led_ptr, *green_led_ptr;
 extern HT1621B *disp_ptr;
 
 namespace {
-    /** Переводит значение температуры в десятые доли градуса с округлением. */
-    inline int round_to_tenths(float value) {
-        return static_cast<int>((value >= 0.0f)
-                                ? (value * 10.0f + 0.5f)
-                                : (value * 10.0f - 0.5f));
-    }
-
     /** Возвращает абсолютный срок для таймаута (now + delta). */
     inline uint32_t make_deadline(uint32_t now, uint32_t delta) {
         return now + delta;
@@ -79,7 +72,7 @@ void Controller::poll() {
 
 /** Guard: реагировать только на первое событие «нажата» (value == 0). */
 bool Controller::guardPress(const Event &e) const {
-    return e.value == 0.0f;
+    return e.value == 0;
 }
 
 /** Action: сохранить новое измерение и перерассчитать состояние. */
@@ -162,19 +155,18 @@ void Controller::displaySetpointTemperature() {
 }
 
 /** Универсальный вывод значения на индикатор HT1621. */
-void Controller::displayTemperature(char label, float value) {
+void Controller::displayTemperature(char label, int value) {
     if (!disp_ptr) return;
 
     disp_ptr->ClearSegArea(false);
 
-    float clamped = value;
-    if (clamped < -9.9f) clamped = -9.9f;
-    else if (clamped > 99.9f) clamped = 99.9f;
+    // value уже в десятых долях градуса, ограничиваем диапазон
+    int clamped = value;
+    if (clamped < -99) clamped = -99;  // -9.9°C
+    else if (clamped > 999) clamped = 999;  // 99.9°C
 
-    int tenths = round_to_tenths(clamped);
-    bool negative = tenths < 0;
-    int magnitude = negative ? -tenths : tenths;
-    if (magnitude > 999) magnitude = 999;
+    bool negative = clamped < 0;
+    int magnitude = negative ? -clamped : clamped;
 
     int whole = magnitude / 10;
     int frac = magnitude % 10;

@@ -20,7 +20,7 @@ enum class EventType : uint8_t {
 
 struct Event {
     EventType type;
-    float value;   // Универсальное поле (температура, например)
+    int value;     // Универсальное поле (температура в десятых долях градуса, например)
 };
 
 class EventQueue {

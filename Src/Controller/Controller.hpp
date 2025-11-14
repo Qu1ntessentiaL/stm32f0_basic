@@ -76,7 +76,7 @@ private:
     // Работа с индикацией
     void displayCurrentTemperature();
     void displaySetpointTemperature();
-    void displayTemperature(char label, float value);
+    void displayTemperature(char label, int value);  // value в десятых долях градуса
     void ensureDisplayTimeout();
 
     // Вспомогательные функции
@@ -85,15 +85,15 @@ private:
     /// Таблица переходов конечного автомата (определена в .cpp).
     static const Transition transitions[];
 
-    float m_setpoint = 25.0f;                   ///< Уставка, задаваемая пользователем (°C).
-    float m_current = 0.0f;                     ///< Текущая измеренная температура (°C).
+    int m_setpoint = 250;                       ///< Уставка, задаваемая пользователем (в десятых долях °C, 250 = 25.0°C).
+    int m_current = 0;                          ///< Текущая измеренная температура (в десятых долях °C).
     State m_state = State::Idle;                ///< Состояние автомата.
     bool m_showingSetpoint = false;             ///< Отображается ли сейчас уставка `t2`.
     uint32_t m_setpointDisplayDeadline = 0;     ///< Момент возврата к отображению `t1`.
 
     static constexpr uint32_t SetpointDisplayDurationMs = 3000; ///< Время показа `t2` после нажатия (мс).
-    static constexpr float SetpointStep = 0.5f;                 ///< Шаг изменения уставки (°C).
-    static constexpr float SetpointMin = -9.5f;                 ///< Минимально допустимая уставка (°C).
-    static constexpr float SetpointMax = 99.5f;                 ///< Максимально допустимая уставка (°C).
-    static constexpr float ErrorDelta = 3.0f;                   ///< Перегрев относительно цели (°C).
+    static constexpr int SetpointStep = 5;                      ///< Шаг изменения уставки (в десятых долях °C, 5 = 0.5°C).
+    static constexpr int SetpointMin = -95;                     ///< Минимально допустимая уставка (в десятых долях °C, -95 = -9.5°C).
+    static constexpr int SetpointMax = 995;                     ///< Максимально допустимая уставка (в десятых долях °C, 995 = 99.5°C).
+    static constexpr int ErrorDelta = 30;                       ///< Перегрев относительно цели (в десятых долях °C, 30 = 3.0°C).
 };
