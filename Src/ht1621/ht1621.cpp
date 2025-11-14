@@ -1,4 +1,5 @@
 #include "ht1621.hpp"
+#include <cstddef>
 
 static inline void itoa_simple(int value, char *buf) {
     char tmp[12];
@@ -130,7 +131,9 @@ void HT1621B::Flush() {
 }
 
 void HT1621B::FullClear(bool flushNow) {
-    memset(m_vram, 0, sizeof(m_vram));
+    for (size_t i = 0; i < sizeof(m_vram); ++i) {
+        m_vram[i] = 0;
+    }
     if (flushNow) Flush();
 }
 
@@ -193,7 +196,9 @@ void HT1621B::ShowDigit(uint8_t position, uint8_t digit, bool withDot, bool flus
 }
 
 void HT1621B::ShowFull(bool flushNow) {
-    memset(m_vram, 0xff, sizeof(m_vram));
+    for (size_t i = 0; i < sizeof(m_vram); ++i) {
+        m_vram[i] = 0xFF;
+    }
     if (flushNow) Flush();
 }
 
@@ -224,7 +229,6 @@ void HT1621B::ShowLetter(uint8_t position, char c, bool flushNow) {
         case 'X': segs = m_letters[17]; break;
         case '-': segs = m_letters[18]; break;
         case '_': segs = m_letters[19]; break;
-        //case ' ': segs = m_letters[20]; break;
         default: return;
     }
 

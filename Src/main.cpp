@@ -10,7 +10,6 @@
  * Resistor R18 -> PA0
  * Resistor R20 -> PA12
  */
-#include <cstdio>
 #include "fw_info.h"
 
 #include "GpioDriver.hpp"
@@ -45,8 +44,6 @@ void tim17_callback() {
 }
 
 void print_fw_info() {
-    char buf[128];
-
     // Проверим magic
     if (fw_info.magic != 0xDEADBEEF) {
         uart_write_str("FW info not valid\r\n");
@@ -55,11 +52,15 @@ void print_fw_info() {
 
     uart_write_str("=== Firmware Info ===\r\n");
 
-    snprintf(buf, sizeof(buf), "Tag: %s\r\n", fw_info.tag);
-    uart_write_str(buf);
+    // Выводим тег без snprintf
+    uart_write_str("Tag: ");
+    uart_write_str(fw_info.tag);
+    uart_write_str("\r\n");
 
-    snprintf(buf, sizeof(buf), "Commit: %s\r\n", fw_info.commit);
-    uart_write_str(buf);
+    // Выводим коммит без snprintf
+    uart_write_str("Commit: ");
+    uart_write_str(fw_info.commit);
+    uart_write_str("\r\n");
 
     uart_write_str("=====================\r\n");
 }

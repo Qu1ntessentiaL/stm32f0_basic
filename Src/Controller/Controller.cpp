@@ -3,8 +3,6 @@
 #include "GpioDriver.hpp"
 #include "ht1621.hpp"
 
-#include <cstdio>
-
 extern GpioDriver *red_led_ptr, *green_led_ptr;
 extern HT1621B *disp_ptr;
 
@@ -23,15 +21,20 @@ namespace {
 }
 
 const Controller::Transition Controller::transitions[] = {
-        {EventType::TemperatureReady, Controller::State::Idle,    nullptr,                 &Controller::actionTemperatureSample},
-        {EventType::TemperatureReady, Controller::State::Heating, nullptr,                 &Controller::actionTemperatureSample},
-        {EventType::TemperatureReady, Controller::State::Error,   nullptr,                 &Controller::actionTemperatureSample},
-        {EventType::ButtonS1,         Controller::State::Idle,    &Controller::guardPress, &Controller::actionDecreaseSetpoint},
-        {EventType::ButtonS1,         Controller::State::Heating, &Controller::guardPress, &Controller::actionDecreaseSetpoint},
-        {EventType::ButtonS1,         Controller::State::Error,   &Controller::guardPress, &Controller::actionDecreaseSetpoint},
-        {EventType::ButtonS2,         Controller::State::Idle,    &Controller::guardPress, &Controller::actionIncreaseSetpoint},
-        {EventType::ButtonS2,         Controller::State::Heating, &Controller::guardPress, &Controller::actionIncreaseSetpoint},
-        {EventType::ButtonS2,         Controller::State::Error,   &Controller::guardPress, &Controller::actionIncreaseSetpoint},
+        // TemperatureReady: состояние вычисляется динамически через evaluateState()
+        {EventType::TemperatureReady, Controller::State::Idle,    nullptr,                 &Controller::actionTemperatureSample, Controller::ComputeState},
+        {EventType::TemperatureReady, Controller::State::Heating, nullptr,                 &Controller::actionTemperatureSample, Controller::ComputeState},
+        {EventType::TemperatureReady, Controller::State::Error,   nullptr,                 &Controller::actionTemperatureSample, Controller::ComputeState},
+        
+        // ButtonS1: уменьшение уставки, состояние вычисляется после изменения
+        {EventType::ButtonS1,         Controller::State::Idle,    &Controller::guardPress, &Controller::actionDecreaseSetpoint, Controller::ComputeState},
+        {EventType::ButtonS1,         Controller::State::Heating, &Controller::guardPress, &Controller::actionDecreaseSetpoint, Controller::ComputeState},
+        {EventType::ButtonS1,         Controller::State::Error,   &Controller::guardPress, &Controller::actionDecreaseSetpoint, Controller::ComputeState},
+        
+        // ButtonS2: увеличение уставки, состояние вычисляется после изменения
+        {EventType::ButtonS2,         Controller::State::Idle,    &Controller::guardPress, &Controller::actionIncreaseSetpoint, Controller::ComputeState},
+        {EventType::ButtonS2,         Controller::State::Heating, &Controller::guardPress, &Controller::actionIncreaseSetpoint, Controller::ComputeState},
+        {EventType::ButtonS2,         Controller::State::Error,   &Controller::guardPress, &Controller::actionIncreaseSetpoint, Controller::ComputeState},
 };
 
 /** Инициализация контроллера и синхронизация индикации. */
@@ -50,7 +53,20 @@ void Controller::processEvent(const Event &e) {
         if (transition.source != m_state) continue;
         if (transition.guard && !(this->*transition.guard)(e)) continue;
 
-        State next = (this->*transition.action)(e);
+        // Определяем целевое состояние
+        State next;
+        if (transition.to == ComputeState) {
+            // Вычисляем через action-функцию (для TemperatureReady и кнопок)
+            next = (this->*transition.action)(e);
+        } else {
+            // Используем явно указанное состояние из таблицы
+            next = transition.to;
+            // Вызываем action для побочных эффектов (если есть)
+            if (transition.action) {
+                (this->*transition.action)(e);
+            }
+        }
+        
         applyState(next);
         return;
     }
@@ -174,10 +190,10 @@ void Controller::displayTemperature(char label, float value) {
             text[4] = static_cast<char>('0' + (whole / 10));
         }
     } else {
-        char wholeBuf[4];
-        std::snprintf(wholeBuf, sizeof(wholeBuf), "%2d", whole);
-        text[3] = wholeBuf[0];
-        text[4] = wholeBuf[1];
+        // Форматируем whole как двузначное число с ведущим нулём (без snprintf)
+        if (whole > 99) whole = 99;
+        text[3] = static_cast<char>('0' + (whole / 10));
+        text[4] = static_cast<char>('0' + (whole % 10));
     }
     text[5] = static_cast<char>('0' + frac);
 
