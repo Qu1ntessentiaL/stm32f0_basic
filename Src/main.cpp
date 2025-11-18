@@ -35,9 +35,10 @@ EventQueue *queue_ptr = nullptr;
 Controller *ctrl_ptr = nullptr;
 
 GpioDriver *red_led_ptr = nullptr,
-        *green_led_ptr = nullptr;
+        *green_led_ptr = nullptr,
+        *charger_ptr = nullptr;
 
-void tim17_callback() {
+void doHeavyWork() {
     static uint8_t i = 0;
     disp_ptr->ShowChargeLevel(i++, true);
     if (i > 3) i = 0;
@@ -82,10 +83,12 @@ int main() {
             blue_led(GPIOA, 11),
             green_led(GPIOA, 6),
             red_led(GPIOA, 5),
-            buzzer(GPIOB, 1);
+            buzzer(GPIOB, 1),
+            charger(GPIOA, 15);
 
     green_led_ptr = &green_led;
     red_led_ptr = &red_led;
+    charger_ptr = &charger;
 
     light.Init(GpioDriver::Mode::Output,
                GpioDriver::OutType::PushPull,
@@ -110,9 +113,11 @@ int main() {
                       GpioDriver::Speed::Medium);
     red_led_ptr->Reset();
 
+    charger.Init(GpioDriver::Mode::Input);
+
     static TimDriver tim17(TIM17);
-    tim17.setCallback(tim17_callback);
-    tim17.Init(47999, 100);
+    //tim17.setCallback(tim17_callback);
+    tim17.Init(47, 999);
     tim17.Start();
     tim17_ptr = &tim17;
 
@@ -138,9 +143,27 @@ int main() {
         sens_ptr->poll();
         uart_poll_tx();
         buttons.poll(queue);
+
         if (auto e = queue.pop())
             ctrl.processEvent(*e);
         ctrl.poll();
+
+        if (tim17.getIrqCount() > 0) {
+            tim17.decIrqCount();
+
+            if (charger_ptr->Read()) {
+                static uint8_t subcounter = 0;
+                subcounter++;
+
+                if (subcounter >= 100) {
+                    subcounter = 0;
+                    doHeavyWork();
+                }
+            } else {
+                disp_ptr->ShowChargeLevel(0, true);
+            }
+        }
+
         RccDriver::IWDG_Reload();
     }
 }

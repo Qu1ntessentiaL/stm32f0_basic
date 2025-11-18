@@ -26,6 +26,7 @@ public:
     void handleIRQ() {
         if (m_tim->SR & TIM_SR_UIF) {
             m_tim->SR &= ~TIM_SR_UIF; // Clear update flag
+            m_irqCount++;
             if (m_callback) m_callback();
         }
     }
@@ -38,9 +39,18 @@ public:
         m_tim->CR1 &= ~TIM_CR1_CEN;
     }
 
+    inline uint16_t getIrqCount() const { return m_irqCount; }
+
+    inline void clearIrqCount() { m_irqCount = 0; }
+
+    inline void decIrqCount() {
+        if (m_irqCount > 0) m_irqCount--;
+    }
+
 private:
     TIM_TypeDef *m_tim;
     Callback m_callback;
+    volatile uint16_t m_irqCount = 0;
 
     void enableClock() {
         if (m_tim == TIM1) RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
