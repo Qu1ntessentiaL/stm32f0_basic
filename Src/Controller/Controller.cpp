@@ -2,9 +2,11 @@
 
 #include "GpioDriver.hpp"
 #include "ht1621.hpp"
+#include "TimDriver.hpp"
 
-extern GpioDriver *red_led_ptr, *green_led_ptr;
+extern GpioDriver *red_led_ptr;
 extern HT1621B *disp_ptr;
+extern PwmDriver *heater_ptr;
 
 namespace {
     /** Возвращает абсолютный срок для таймаута (now + delta). */
@@ -37,6 +39,7 @@ void Controller::init() {
     m_setpointDisplayDeadline = 0;
     applyState(evaluateState());
     displayCurrentTemperature();
+    m_pid.reset();
 }
 
 /** Обработка очередного события конечным автоматом. */
@@ -127,19 +130,32 @@ void Controller::applyState(State newState) {
     updateOutputsFor(newState);
 }
 
-/** Управление светодиодами в зависимости от состояния. */
+/**
+ * @brief Применить новое состояние автомата и обновить выходы.
+ *
+ * FSM остаётся, но мощность нагревателя вычисляется PID-регулятором.
+ *
+ * - State::Error -> мощность = 0
+ * - State::Heating/Idle -> PID выдаёт 0..1000
+ *
+ * Светодиоды работают как раньше:
+ * - Зеленый горит, если power > 0
+ * - Красный горит в Error
+ */
 void Controller::updateOutputsFor(State state) {
     const bool error = (state == State::Error);
-    const bool heat = (state == State::Heating);
 
-    if (green_led_ptr) {
-        if (heat) green_led_ptr->Set();
-        else green_led_ptr->Reset();
+    int power = 0;
+
+    if (!error) {
+        // PID рассчитывает мощность нагрева в диапазоне 0..1000
+        power = computeHeatingPower();
     }
 
-    if (red_led_ptr) {
-        if (error) red_led_ptr->Set();
-        else red_led_ptr->Reset();
+    // Управление нагревателем (PWM)
+    if (heater_ptr) {
+        heater_ptr->setPower(power);
+        // setPower ожидает значение от 0 до 1000 (0..100%)
     }
 }
 
@@ -206,4 +222,17 @@ void Controller::ensureDisplayTimeout() {
 /** Безопасное сравнение времени с учётом переполнения счётчика. */
 bool Controller::timeReached(uint32_t now, uint32_t deadline) {
     return static_cast<int32_t>(now - deadline) >= 0;
+}
+
+/**
+ * @brief Вычислить мощность нагрева через PID (0..1000).
+ *
+ * Текущая температура и уставка уже хранятся в полях класса
+ * m_current и m_setpoint, поэтому функция просто делегирует
+ * расчёт PID-регулятору.
+ */
+int Controller::computeHeatingPower() const {
+    // PIDInt::update НЕ const -> нужен mutable PID или убираем const
+    // проще — убираем const у функции
+    return const_cast<PIDInt &>(m_pid).update(m_setpoint, m_current);
 }

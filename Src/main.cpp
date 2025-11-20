@@ -34,6 +34,8 @@ EventQueue *queue_ptr = nullptr;
 
 Controller *ctrl_ptr = nullptr;
 
+PwmDriver *heater_ptr = nullptr;
+
 GpioDriver *red_led_ptr = nullptr,
         *green_led_ptr = nullptr,
         *charger_ptr = nullptr;
@@ -101,11 +103,14 @@ int main() {
                   GpioDriver::Pull::None,
                   GpioDriver::Speed::Medium);
 
-    green_led_ptr->Init(GpioDriver::Mode::Output,
+    green_led_ptr->Init(GpioDriver::Mode::Alternate,
                         GpioDriver::OutType::PushPull,
                         GpioDriver::Pull::None,
-                        GpioDriver::Speed::Medium);
-    green_led_ptr->Reset();
+                        GpioDriver::Speed::High);
+    green_led_ptr->SetAlternateFunction(1); // TIM3_CH1
+    static PwmDriver pwm(TIM3, 1);
+    heater_ptr = &pwm;
+    heater_ptr->Init(47, 999);
 
     red_led_ptr->Init(GpioDriver::Mode::Output,
                       GpioDriver::OutType::PushPull,

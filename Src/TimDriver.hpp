@@ -68,3 +68,71 @@ private:
         else if (m_tim == TIM17) NVIC_EnableIRQ(TIM17_IRQn);
     }
 };
+
+/**
+ * @brief Драйвер для PWM на STM32F0.
+ *
+ * Настраивает:
+ * - GPIO в режим AF
+ * - Таймер в режим PWM (channel 1)
+ * - PSC/ARR формируют частоту
+ * - CCR1 = скважность (0…ARR)
+ */
+class PwmDriver {
+public:
+    explicit PwmDriver(TIM_TypeDef *tim, uint8_t channel)
+            : m_tim(tim), m_channel(channel) {}
+
+    /**
+     * @brief Инициализация PWM
+     * @param prescaler делитель таймера
+     * @param autoReload период (ARR)
+     */
+    void Init(uint16_t prescaler, uint16_t autoReload) {
+        enableClock();
+
+        m_tim->PSC = prescaler;
+        m_tim->ARR = autoReload;
+
+        // PWM mode 1
+        if (m_channel == 1) {
+            m_tim->CCMR1 |= (6 << TIM_CCMR1_OC1M_Pos); // PWM mode 1
+            m_tim->CCMR1 |= TIM_CCMR1_OC1PE;           // preload enable
+            m_tim->CCER |= TIM_CCER_CC1E;
+        }
+
+        m_tim->CR1 |= TIM_CR1_ARPE;  // авто-перезагрузка preload
+        m_tim->EGR |= TIM_EGR_UG;    // обновить shadow-регистры
+
+        Start();
+    }
+
+    /**
+     * @brief Установить мощность (0..1000)
+     */
+    void setPower(int value) {
+        if (value < 0) value = 0;
+        if (value > 1000) value = 1000;
+
+        uint32_t ccr = (m_tim->ARR * value) / 1000;
+
+        if (m_channel == 1)
+            m_tim->CCR1 = ccr;
+    }
+
+    inline void Start() { m_tim->CR1 |= TIM_CR1_CEN; }
+
+    inline void Stop() { m_tim->CR1 &= ~TIM_CR1_CEN; }
+
+private:
+    TIM_TypeDef *m_tim;
+    uint8_t m_channel;
+
+    void enableClock() {
+        if (m_tim == TIM1) RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
+        if (m_tim == TIM3) RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
+        if (m_tim == TIM14) RCC->APB1ENR |= RCC_APB1ENR_TIM14EN;
+        if (m_tim == TIM16) RCC->APB2ENR |= RCC_APB2ENR_TIM16EN;
+        if (m_tim == TIM17) RCC->APB2ENR |= RCC_APB2ENR_TIM17EN;
+    }
+};
