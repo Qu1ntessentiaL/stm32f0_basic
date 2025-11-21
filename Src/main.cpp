@@ -156,6 +156,14 @@ int main() {
         if (tim17.getIrqCount() > 0) {
             tim17.decIrqCount();
 
+            static uint8_t tickCounter = 0;
+            tickCounter++;
+
+            if (tickCounter >= 100) { // раз в 100 мс
+                tickCounter = 0;
+                queue_ptr->push({EventType::Tick100ms, 0});
+            }
+
             if (charger_ptr->Read()) {
                 static uint8_t subcounter = 0;
                 subcounter++;

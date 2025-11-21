@@ -179,6 +179,7 @@ void ds18b20_temp_ready(int16_t temp) {
         int whole = temp / 10;               // Get whole degrees (temp is in tenths)
         int frac = temp % 10;                // Get fractional part (tenths)
         if (frac < 0) frac = -frac;          // Ensure fractional part is positive
+#if defined PRINT_TEMP
         uart_write_str("Temperature: ");
         uart_write_int(whole);          // Display whole part
         uart_write_str(".");               // Decimal point
@@ -186,10 +187,11 @@ void ds18b20_temp_ready(int16_t temp) {
         uart_write_str(" C");              // Units
 #if defined ELAPSED_TIME
         uart_write_str(" (");   // Parenthesis
-        uart_write_int(t / 72); // Display time elapsed
+        uart_write_int(t / 48); // Display time elapsed
         uart_write_str(" us)"); // Parenthesis
 #endif
         uart_write_str("\r\n");     // And newline
+#endif
 
         if (queue_ptr) {
             // temp уже в десятых долях градуса, передаём как есть

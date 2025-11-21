@@ -2,6 +2,8 @@
 
 #include "ds18b20.hpp"
 
+// #define PRINT_TEMP
+
 void hardware_init();
 
 void ds18b20_led_control(unsigned action);

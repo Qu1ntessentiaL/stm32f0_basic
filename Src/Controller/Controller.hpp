@@ -68,6 +68,7 @@ private:
     State actionTemperatureSample(const Event &e);
     State actionDecreaseSetpoint(const Event &e);
     State actionIncreaseSetpoint(const Event &e);
+    State actionPIDTick(const Event &);
 
     // Управление состоянием
     State evaluateState() const;
@@ -107,8 +108,8 @@ private:
      * что обеспечивает высокую скорость работы на MCU без FPU.
      */
     PIDInt m_pid = PIDInt(
-            150,      ///< Kp = 0.150
-            10,        ///< Ki = 0.010
+            15000,      ///< Kp = 0.150
+            0,        ///< Ki = 0.010
             0,        ///< Kd = 0.000
             0,     ///< Минимальная мощность
             1000   ///< Максимальная мощность (100% PWM)

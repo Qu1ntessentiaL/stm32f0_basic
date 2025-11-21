@@ -1,5 +1,9 @@
 #pragma once
+
 #include <cstdint>
+#include "uart.hpp"
+
+#define PRINT_PID
 
 /**
  * @brief Фиксированная-точность (integer-only) PID-регулятор.
@@ -49,8 +53,7 @@ public:
            int32_t integrMin = -50000, int32_t integrMax = 50000)
             : m_kp(kp), m_ki(ki), m_kd(kd),
               m_outMin(outMin), m_outMax(outMax),
-              m_integrMin(integrMin), m_integrMax(integrMax)
-    {}
+              m_integrMin(integrMin), m_integrMax(integrMax) {}
 
     /**
      * @brief Сброс внутреннего состояния PID.
@@ -72,8 +75,8 @@ public:
      * Вызывается при поступлении новых данных (например, после
      * каждого события TemperatureReady).
      *
-     * @param setpoint	Целевое значение (например, температура x10).
-     * @param measured	Текущее измеренное значение (x10).
+     * @param setpoint_x10	Целевое значение (например, температура x10).
+     * @param measured_x10	Текущее измеренное значение (x10).
      * @return Управляющее воздействие, ограниченное диапазоном [outMin, outMax].
      *
      * Алгоритм:
@@ -85,9 +88,8 @@ public:
      * Используются только операции int32/int64,
      * что идеально подходит для Cortex-M0.
      */
-    int32_t update(int32_t setpoint, int32_t measured)
-    {
-        int32_t error = setpoint - measured;
+    int32_t update(int32_t setpoint_x10, int32_t measured_x10) {
+        int32_t error = setpoint_x10 - measured_x10;
 
         // Интегральная часть
         m_integral += error;
@@ -98,42 +100,65 @@ public:
         if (m_hasPrev) {
             derivative = error - m_prevError;
         } else {
-            m_hasPrev = true; // пропуск деривации на первом шаге
+            m_hasPrev = true;
         }
         m_prevError = error;
 
-        // Основная формула PID
-        // Все операции в int64 для предотвращения переполнения
-        int64_t out =
-                (int64_t)m_kp * error +
-                (int64_t)m_ki * m_integral +
-                (int64_t)m_kd * derivative;
+        // P, I, D термы отдельно (чтобы можно было печатать)
+        int64_t p_term = (int64_t) m_kp * error;
+        int64_t i_term = (int64_t) m_ki * m_integral;
+        int64_t d_term = (int64_t) m_kd * derivative;
 
-        // Деление один раз -> максимум производительности
-        out /= SCALE;
+        // Сумма до деления -> "сырое" значение
+        int64_t sum = p_term + i_term + d_term;
 
-        // Ограничение выхода
-        clamp(out, (int64_t)m_outMin, (int64_t)m_outMax);
+        // Масштабируем выход
+        int64_t out = sum / SCALE;
 
-        return (int32_t)out;
+        // Ограничиваем диапазон
+        clamp(out, (int64_t) m_outMin, (int64_t) m_outMax);
+
+#if defined PRINT_PID
+        uart_write_str("err=");
+        uart_write_int(error);
+
+        uart_write_str(" P=");
+        uart_write_int((int32_t) (p_term / SCALE));
+
+        uart_write_str(" I=");
+        uart_write_int((int32_t) (i_term / SCALE));
+
+        uart_write_str(" D=");
+        uart_write_int((int32_t) (d_term / SCALE));
+
+        uart_write_str(" raw=");
+        uart_write_int((int32_t) (sum / SCALE));
+
+        uart_write_str(" out=");
+        uart_write_int((int32_t) out);
+
+        uart_write_str("\r\n");
+#endif
+
+        return (int32_t) out;
     }
 
 private:
     // Коэффициенты PID в формате fixed-point
-    int32_t m_kp;	///< Пропорциональная часть (×SCALE)
-    int32_t m_ki;	///< Интегральная часть (×SCALE)
-    int32_t m_kd;	///< Производная часть (×SCALE)
+    int32_t m_kp;    ///< Пропорциональная часть (×SCALE)
+    int32_t m_ki;    ///< Интегральная часть (×SCALE)
+    int32_t m_kd;    ///< Производная часть (×SCALE)
 
     // ===== Ограничения =====
-    int32_t m_outMin;	///< Минимальное значение выхода
-    int32_t m_outMax;	///< Максимальное значение выхода
+    int32_t m_outMin;    ///< Минимальное значение выхода
+    int32_t m_outMax;    ///< Максимальное значение выхода
     int32_t m_integrMin; ///< Минимум для интегратора
     int32_t m_integrMax; ///< Максимум для интегратора
 
     // Внутренние переменные
     int32_t m_integral = 0;     ///< Интегральная сумма ошибки
     int32_t m_prevError = 0;    ///< Ошибка прошлого шага
-    bool    m_hasPrev = false;  ///< Признак наличия предыдущей ошибки
+    bool m_hasPrev = false;  ///< Признак наличия предыдущей ошибки
 
     /**
      * @brief Универсальная функция ограничения значения.

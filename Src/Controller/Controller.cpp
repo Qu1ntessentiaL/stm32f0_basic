@@ -20,16 +20,19 @@ const Controller::Transition Controller::transitions[] = {
         {EventType::TemperatureReady, Controller::State::Idle,    nullptr,                 &Controller::actionTemperatureSample, Controller::ComputeState},
         {EventType::TemperatureReady, Controller::State::Heating, nullptr,                 &Controller::actionTemperatureSample, Controller::ComputeState},
         {EventType::TemperatureReady, Controller::State::Error,   nullptr,                 &Controller::actionTemperatureSample, Controller::ComputeState},
-        
+
         // ButtonS1: уменьшение уставки, состояние вычисляется после изменения
-        {EventType::ButtonS1,         Controller::State::Idle,    &Controller::guardPress, &Controller::actionDecreaseSetpoint, Controller::ComputeState},
-        {EventType::ButtonS1,         Controller::State::Heating, &Controller::guardPress, &Controller::actionDecreaseSetpoint, Controller::ComputeState},
-        {EventType::ButtonS1,         Controller::State::Error,   &Controller::guardPress, &Controller::actionDecreaseSetpoint, Controller::ComputeState},
-        
+        {EventType::ButtonS1,         Controller::State::Idle,    &Controller::guardPress, &Controller::actionDecreaseSetpoint,  Controller::ComputeState},
+        {EventType::ButtonS1,         Controller::State::Heating, &Controller::guardPress, &Controller::actionDecreaseSetpoint,  Controller::ComputeState},
+        {EventType::ButtonS1,         Controller::State::Error,   &Controller::guardPress, &Controller::actionDecreaseSetpoint,  Controller::ComputeState},
+
         // ButtonS2: увеличение уставки, состояние вычисляется после изменения
-        {EventType::ButtonS2,         Controller::State::Idle,    &Controller::guardPress, &Controller::actionIncreaseSetpoint, Controller::ComputeState},
-        {EventType::ButtonS2,         Controller::State::Heating, &Controller::guardPress, &Controller::actionIncreaseSetpoint, Controller::ComputeState},
-        {EventType::ButtonS2,         Controller::State::Error,   &Controller::guardPress, &Controller::actionIncreaseSetpoint, Controller::ComputeState},
+        {EventType::ButtonS2,         Controller::State::Idle,    &Controller::guardPress, &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
+        {EventType::ButtonS2,         Controller::State::Heating, &Controller::guardPress, &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
+        {EventType::ButtonS2,         Controller::State::Error,   &Controller::guardPress, &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
+
+        {EventType::Tick100ms,        Controller::State::Idle,    nullptr,                 &Controller::actionPIDTick,           Controller::State::Idle},
+        {EventType::Tick100ms,        Controller::State::Heating, nullptr,                 &Controller::actionPIDTick,           Controller::State::Heating},
 };
 
 /** Инициализация контроллера и синхронизация индикации. */
@@ -111,6 +114,16 @@ Controller::State Controller::actionIncreaseSetpoint(const Event &) {
     displaySetpointTemperature();
 
     return evaluateState();
+}
+
+Controller::State Controller::actionPIDTick(const Event &) {
+    // Периодический вызов PID
+    if (m_state != State::Error) {
+        int power = computeHeatingPower();
+        if (heater_ptr)
+            heater_ptr->setPower(power);
+    }
+    return m_state; // Состояние не изменяем
 }
 
 /** Высчитать новое состояние автомата, исходя из текущих температур. */
@@ -232,7 +245,5 @@ bool Controller::timeReached(uint32_t now, uint32_t deadline) {
  * расчёт PID-регулятору.
  */
 int Controller::computeHeatingPower() const {
-    // PIDInt::update НЕ const -> нужен mutable PID или убираем const
-    // проще — убираем const у функции
     return const_cast<PIDInt &>(m_pid).update(m_setpoint, m_current);
 }
