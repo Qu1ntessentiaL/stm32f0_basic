@@ -72,15 +72,15 @@ public:
      * Вызывается при поступлении новых данных (например, после
      * каждого события TemperatureReady).
      *
-     * @param setpoint	Целевое значение (например, температура ×10).
-     * @param measured	Текущее измеренное значение (×10).
+     * @param setpoint	Целевое значение (например, температура x10).
+     * @param measured	Текущее измеренное значение (x10).
      * @return Управляющее воздействие, ограниченное диапазоном [outMin, outMax].
      *
      * Алгоритм:
      * - error = setpoint - measured
      * - Интегральная часть ограничивается (anti-windup)
      * - Производная рассчитывается только со второго шага
-     * - Итоговый PID = (Kp*error + Ki*integral + Kd*derivative) / SCALE
+     * - Итоговый PID = (Kp * error + Ki * integral + Kd * derivative) / SCALE
      *
      * Используются только операции int32/int64,
      * что идеально подходит для Cortex-M0.
