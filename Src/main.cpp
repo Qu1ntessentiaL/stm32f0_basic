@@ -142,6 +142,9 @@ int main() {
                     GPIOA, 2,
                     GPIOA, 3,
                     GPIOA, 4);
+    DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP;
+    DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_TIM3_STOP;
+    DBGMCU->APB2FZ |= DBGMCU_APB2_FZ_DBG_TIM17_STOP;
     __enable_irq();
 
     while (true) {

@@ -50,7 +50,7 @@ public:
      */
     PIDInt(int32_t kp, int32_t ki, int32_t kd,
            int32_t outMin = 0, int32_t outMax = 1000,
-           int32_t integrMin = -50000, int32_t integrMax = 50000)
+           int32_t integrMin = -5000, int32_t integrMax = 5000)
             : m_kp(kp), m_ki(ki), m_kd(kd),
               m_outMin(outMin), m_outMax(outMax),
               m_integrMin(integrMin), m_integrMax(integrMax) {}
@@ -149,9 +149,9 @@ private:
     int32_t m_ki;    ///< Интегральная часть (×SCALE)
     int32_t m_kd;    ///< Производная часть (×SCALE)
 
-    // ===== Ограничения =====
-    int32_t m_outMin;    ///< Минимальное значение выхода
-    int32_t m_outMax;    ///< Максимальное значение выхода
+    // Ограничения
+    int32_t m_outMin;    ///< Минимальное значение выхода (коэффициент заполнения ШИМ)
+    int32_t m_outMax;    ///< Максимальное значение выхода (коэффициент заполнения ШИМ)
     int32_t m_integrMin; ///< Минимум для интегратора
     int32_t m_integrMax; ///< Максимум для интегратора
 
@@ -162,6 +162,10 @@ private:
 
     /**
      * @brief Универсальная функция ограничения значения.
+     * @tparam T
+     * @param v
+     * @param lo
+     * @param hi
      */
     template<typename T>
     static void clamp(T &v, T lo, T hi) {
