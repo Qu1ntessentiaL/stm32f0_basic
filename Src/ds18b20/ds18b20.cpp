@@ -75,9 +75,18 @@ constexpr auto makeCommand(const std::array<uint8_t, N> &bytes) noexcept {
     return cmd;
 }
 
-// === Использование ===
+// Использование
 constexpr auto conv_cmd = makeCommand(std::array<uint8_t, 2>{0xCC, 0x44});
 constexpr auto read_cmd = makeCommand(std::array<uint8_t, 2>{0xCC, 0xBE});
+
+void DS18B20::detect_sensor_type() {
+    // DS18S20 не имеет конфигурационного регистра - scratchpad[4] = 0xFF
+    if (m_ctx.scratchpad[4] == 0xFF) {
+        m_family = 0x10;   // DS18S20
+    } else {
+        m_family = 0x28;   // DS18B20
+    }
+}
 
 void DS18B20::ForceUpdateEvent(TIM_TypeDef *tim) {
     tim->EGR = TIM_EGR_UG;                 // Сгенерировать событие обновления
@@ -165,8 +174,16 @@ void DS18B20::decode_scratchpad() {
 int16_t DS18B20::decode_temperature() {
     // Combine LSB and MSB of temperature register (bytes 0 and 1)
     auto raw = (int16_t) ((m_ctx.scratchpad[1] << 8) | m_ctx.scratchpad[0]);
-    // Convert to tenths of degrees Celsius (raw value in 1/16th degrees)
-    // Multiply by 10 then divide by 16 to get value in tenths of degree
+
+    if (m_family == 0x10) {
+        int16_t cnt_rem = m_ctx.scratchpad[6];
+        int16_t cnt_per_c = m_ctx.scratchpad[7];
+
+        int32_t coarse = (raw >> 1) * 10;
+        int32_t fine = ((cnt_per_c - cnt_rem) * 10) / cnt_per_c;
+
+        return coarse - 2 + fine;
+    }
     return static_cast<int16_t>((raw * 10) >> 4);
 }
 
@@ -425,6 +442,7 @@ void DS18B20::poll() {
         case FsmStates::DECODE: // DECODE - Process received data and report temperature
             // Decode captured pulse durations into scratchpad bytes
             decode_scratchpad();
+            detect_sensor_type();
             // Turn off LED to indicate measurement complete
             ds18b20_led_control(0);
 

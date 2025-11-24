@@ -49,6 +49,10 @@ class DS18B20 {
         FsmStates current_state;            /**< Current state of the state machine */
     } m_ctx;
 
+    uint8_t m_family = 0x28;
+
+    inline void detect_sensor_type();
+
     void ForceUpdateEvent(TIM_TypeDef *tim);
 
     uint8_t check_scratchpad_crc();
