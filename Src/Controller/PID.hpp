@@ -50,10 +50,13 @@ public:
      */
     PIDInt(int32_t kp, int32_t ki, int32_t kd,
            int32_t outMin = 0, int32_t outMax = 1000,
-           int32_t integrMin = -5000, int32_t integrMax = 5000)
+           int32_t integrMin = -5000, int32_t integrMax = 5000,
+           uint32_t sampleTimeMs = 1000, int32_t deadband = 0)
             : m_kp(kp), m_ki(ki), m_kd(kd),
               m_outMin(outMin), m_outMax(outMax),
-              m_integrMin(integrMin), m_integrMax(integrMax) {}
+              m_integrMin(integrMin), m_integrMax(integrMax),
+              m_sampleTimeMs(sampleTimeMs ? sampleTimeMs : 1U),
+              m_deadband(deadband >= 0 ? deadband : 0) {}
 
     /**
      * @brief Сброс внутреннего состояния PID.
@@ -88,17 +91,31 @@ public:
      * Используются только операции int32/int64,
      * что идеально подходит для Cortex-M0.
      */
-    int32_t update(int32_t setpoint_x10, int32_t measured_x10) {
+    int32_t update(int32_t setpoint_x10, int32_t measured_x10, uint32_t dt_ms) {
+        if (dt_ms == 0) {
+            dt_ms = m_sampleTimeMs;
+        }
+        if (dt_ms == 0) {
+            dt_ms = 1;
+        }
         int32_t error = setpoint_x10 - measured_x10;
 
+        if (m_deadband > 0 && abs32(error) <= m_deadband) {
+            error = 0;
+        }
+
         // Интегральная часть
-        m_integral += error;
+        int32_t baseDt = static_cast<int32_t>(m_sampleTimeMs ? m_sampleTimeMs : 1U);
+        int64_t integralIncrement = (int64_t) error * (int64_t) dt_ms;
+        integralIncrement /= baseDt;
+        m_integral += static_cast<int32_t>(integralIncrement);
         clamp(m_integral, m_integrMin, m_integrMax);
 
         // Производная часть
         int32_t derivative = 0;
         if (m_hasPrev) {
-            derivative = error - m_prevError;
+            int64_t delta = (int64_t) (error - m_prevError) * baseDt;
+            derivative = static_cast<int32_t>(delta / (int64_t) dt_ms);
         } else {
             m_hasPrev = true;
         }
@@ -143,6 +160,16 @@ public:
         return (int32_t) out;
     }
 
+    void setSampleTimeMs(uint32_t sampleTimeMs) {
+        if (sampleTimeMs == 0) sampleTimeMs = 1;
+        m_sampleTimeMs = sampleTimeMs;
+    }
+
+    void setDeadband(int32_t deadband_x10) {
+        if (deadband_x10 < 0) deadband_x10 = 0;
+        m_deadband = deadband_x10;
+    }
+
 private:
     // Коэффициенты PID в формате fixed-point
     int32_t m_kp;    ///< Пропорциональная часть (×SCALE)
@@ -159,6 +186,8 @@ private:
     int32_t m_integral = 0;     ///< Интегральная сумма ошибки
     int32_t m_prevError = 0;    ///< Ошибка прошлого шага
     bool m_hasPrev = false;  ///< Признак наличия предыдущей ошибки
+    uint32_t m_sampleTimeMs;    ///< Номинальный интервал дискретизации (мс)
+    int32_t m_deadband;         ///< Мёртвая зона по ошибке (в десятых градуса)
 
     /**
      * @brief Универсальная функция ограничения значения.
@@ -171,5 +200,9 @@ private:
     static void clamp(T &v, T lo, T hi) {
         if (v < lo) v = lo;
         if (v > hi) v = hi;
+    }
+
+    static int32_t abs32(int32_t v) {
+        return v < 0 ? -v : v;
     }
 };

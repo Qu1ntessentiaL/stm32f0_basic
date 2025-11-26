@@ -104,11 +104,13 @@ public:
         m_tim->CR1 |= TIM_CR1_ARPE;  // авто-перезагрузка preload
         m_tim->EGR |= TIM_EGR_UG;    // обновить shadow-регистры
 
+        setInverted(true);
         Start();
     }
 
     /**
      * @brief Установить мощность (0..1000)
+     * @param value
      */
     void setPower(int value) {
         if (value < 0) value = 0;
@@ -118,6 +120,15 @@ public:
 
         if (m_channel == 1)
             m_tim->CCR1 = ccr;
+    }
+
+    void setInverted(bool inverted) {
+        if (m_channel == 1) {
+            if (inverted)
+                m_tim->CCER |= TIM_CCER_CC1P;
+            else
+                m_tim->CCER &= ~TIM_CCER_CC1P;
+        }
     }
 
     inline void Start() { m_tim->CR1 |= TIM_CR1_CEN; }

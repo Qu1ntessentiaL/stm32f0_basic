@@ -40,9 +40,11 @@ void Controller::init() {
     m_current = m_setpoint;
     m_showingSetpoint = false;
     m_setpointDisplayDeadline = 0;
+    m_pid.reset();
+    m_heaterPower = 0;
+    m_lastPidTimestamp = GetMsTicks();
     applyState(evaluateState());
     displayCurrentTemperature();
-    m_pid.reset();
 }
 
 /** Обработка очередного события конечным автоматом. */
@@ -89,7 +91,26 @@ Controller::State Controller::actionTemperatureSample(const Event &e) {
         displayCurrentTemperature();
     }
 
-    return evaluateState();
+    State next = evaluateState();
+
+    if (next != State::Error) {
+        uint32_t now = GetMsTicks();
+        if (m_state == State::Error) {
+            m_pid.reset();
+            m_heaterPower = 0;
+            m_lastPidTimestamp = now;
+        }
+        uint32_t dt = now - m_lastPidTimestamp;
+        if (dt == 0) {
+            dt = 1;
+        }
+        m_lastPidTimestamp = now;
+        m_heaterPower = computeHeatingPower(dt);
+    } else {
+        m_heaterPower = 0;
+    }
+
+    return next;
 }
 
 /** Action: уменьшить уставку (ButtonS1). */
@@ -100,6 +121,9 @@ Controller::State Controller::actionDecreaseSetpoint(const Event &) {
     m_showingSetpoint = true;
     m_setpointDisplayDeadline = make_deadline(GetMsTicks(), SetpointDisplayDurationMs);
     displaySetpointTemperature();
+    m_pid.reset();
+    m_heaterPower = 0;
+    m_lastPidTimestamp = GetMsTicks();
 
     return evaluateState();
 }
@@ -112,17 +136,16 @@ Controller::State Controller::actionIncreaseSetpoint(const Event &) {
     m_showingSetpoint = true;
     m_setpointDisplayDeadline = make_deadline(GetMsTicks(), SetpointDisplayDurationMs);
     displaySetpointTemperature();
+    m_pid.reset();
+    m_heaterPower = 0;
+    m_lastPidTimestamp = GetMsTicks();
 
     return evaluateState();
 }
 
 Controller::State Controller::actionPIDTick(const Event &) {
-    // Периодический вызов PID
-    if (m_state != State::Error) {
-        int power = computeHeatingPower();
-        if (heater_ptr)
-            heater_ptr->setPower(power);
-    }
+    // Периодически переустанавливаем выходы, чтобы учесть PWM/индикацию.
+    updateOutputsFor(m_state);
     return m_state; // Состояние не изменяем
 }
 
@@ -139,7 +162,16 @@ Controller::State Controller::evaluateState() const {
 
 /** Применить новое состояние и обновить индикаторы. */
 void Controller::applyState(State newState) {
+    State previous = m_state;
     m_state = newState;
+
+    if (newState == State::Error) {
+        m_heaterPower = 0;
+        m_pid.reset();
+    } else if (previous == State::Error) {
+        m_lastPidTimestamp = GetMsTicks();
+    }
+
     updateOutputsFor(newState);
 }
 
@@ -158,12 +190,9 @@ void Controller::applyState(State newState) {
 void Controller::updateOutputsFor(State state) {
     const bool error = (state == State::Error);
 
-    int power = 0;
-
-    if (!error) {
-        // PID рассчитывает мощность нагрева в диапазоне 0..1000
-        power = computeHeatingPower();
-    }
+    int power = error ? 0 : m_heaterPower;
+    if (power < 0) power = 0;
+    if (power > 1000) power = 1000;
 
     // Управление нагревателем (PWM)
     if (heater_ptr) {
@@ -244,6 +273,6 @@ bool Controller::timeReached(uint32_t now, uint32_t deadline) {
  * m_current и m_setpoint, поэтому функция просто делегирует
  * расчёт PID-регулятору.
  */
-int Controller::computeHeatingPower() const {
-    return const_cast<PIDInt &>(m_pid).update(m_setpoint, m_current);
+int Controller::computeHeatingPower(uint32_t dtMs) {
+    return m_pid.update(m_setpoint, m_current, dtMs);
 }

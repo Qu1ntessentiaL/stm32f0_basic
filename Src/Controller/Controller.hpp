@@ -87,17 +87,21 @@ private:
     /// Таблица переходов конечного автомата (определена в .cpp).
     static const Transition transitions[];
 
-    int m_setpoint = 250;                       ///< Уставка, задаваемая пользователем (в десятых долях °C, 250 = 25.0°C).
+    int m_setpoint = 500;                       ///< Уставка, задаваемая пользователем (в десятых долях °C, 250 = 25.0°C).
     int m_current = 0;                          ///< Текущая измеренная температура (в десятых долях °C).
     State m_state = State::Idle;                ///< Состояние автомата.
     bool m_showingSetpoint = false;             ///< Отображается ли сейчас уставка `t2`.
     uint32_t m_setpointDisplayDeadline = 0;     ///< Момент возврата к отображению `t1`.
+    int m_heaterPower = 0;                      ///< Последнее вычисленное значение мощности (0..1000).
+    uint32_t m_lastPidTimestamp = 0;            ///< Время последнего обновления PID (мс).
 
     static constexpr uint32_t SetpointDisplayDurationMs = 3000; ///< Время показа `t2` после нажатия (мс).
     static constexpr int SetpointStep = 5;                      ///< Шаг изменения уставки (в десятых долях °C, 5 = 0.5°C).
     static constexpr int SetpointMin = -95;                     ///< Минимально допустимая уставка (в десятых долях °C, -95 = -9.5°C).
     static constexpr int SetpointMax = 995;                     ///< Максимально допустимая уставка (в десятых долях °C, 995 = 99.5°C).
     static constexpr int ErrorDelta = 30;                       ///< Перегрев относительно цели (в десятых долях °C, 30 = 3.0°C).
+    static constexpr uint32_t PidNominalSamplePeriodMs = 1000;  ///< Базовый период дискретизации PID.
+    static constexpr int PidDeadband = 5;                       ///< Мёртвая зона PID (0.5°C).
 
     /** PID-регулятор мощности нагрева (fixed-point integer) */
 
@@ -108,11 +112,15 @@ private:
      * что обеспечивает высокую скорость работы на MCU без FPU.
      */
     PIDInt m_pid = PIDInt(
-            1500,      ///< Kp = 0.150
-            500,        ///< Ki = 0.010
-            0,        ///< Kd = 0.000
-            0,     ///< Минимальная мощность
-            1000   ///< Максимальная мощность (100% PWM)
+            50000,       ///< Kp
+            200,         ///< Ki
+            0,           ///< Kd
+            0,           ///< Минимальная мощность
+            1000,        ///< Максимальная мощность (100% PWM)
+            -2000,
+            2000,
+            PidNominalSamplePeriodMs,
+            PidDeadband
     );
 
     /**
@@ -120,5 +128,5 @@ private:
      *
      * Вызывается только из updateOutputsFor() когда состояние != Error.
      */
-    int computeHeatingPower() const;
+    int computeHeatingPower(uint32_t dtMs);
 };
