@@ -87,7 +87,7 @@ private:
     /// Таблица переходов конечного автомата (определена в .cpp).
     static const Transition transitions[];
 
-    int m_setpoint = 500;                       ///< Уставка, задаваемая пользователем (в десятых долях °C, 250 = 25.0°C).
+    int m_setpoint = 400;                       ///< Уставка, задаваемая пользователем (в десятых долях °C, 250 = 25.0°C).
     int m_current = 0;                          ///< Текущая измеренная температура (в десятых долях °C).
     State m_state = State::Idle;                ///< Состояние автомата.
     bool m_showingSetpoint = false;             ///< Отображается ли сейчас уставка `t2`.
@@ -101,7 +101,7 @@ private:
     static constexpr int SetpointMax = 995;                     ///< Максимально допустимая уставка (в десятых долях °C, 995 = 99.5°C).
     static constexpr int ErrorDelta = 30;                       ///< Перегрев относительно цели (в десятых долях °C, 30 = 3.0°C).
     static constexpr uint32_t PidNominalSamplePeriodMs = 1000;  ///< Базовый период дискретизации PID.
-    static constexpr int PidDeadband = 5;                       ///< Мёртвая зона PID (0.5°C).
+    static constexpr int PidDeadband = 1;                       ///< Мёртвая зона PID (0.2°C).
 
     /** PID-регулятор мощности нагрева (fixed-point integer) */
 
@@ -112,9 +112,9 @@ private:
      * что обеспечивает высокую скорость работы на MCU без FPU.
      */
     PIDInt m_pid = PIDInt(
-            50000,       ///< Kp
-            200,         ///< Ki
-            0,           ///< Kd
+            40000,       ///< Kp
+            500,         ///< Ki
+            300,           ///< Kd
             0,           ///< Минимальная мощность
             1000,        ///< Максимальная мощность (100% PWM)
             -2000,
