@@ -3,6 +3,10 @@
 #include <cstdint>
 #include <array>
 
+#if defined ELAPSED_TIME
+static uint32_t elapsed_time;
+#endif
+
 /**
  * @defgroup DS18B20_Private_Constants DS18B20 Private Constants
  * @{
@@ -191,7 +195,7 @@ int16_t DS18B20::decode_temperature() {
  * @brief Verify presence of DS18B20 sensor by checking reset pulse timing
  * @return 1 if device present, 0 if no device detected
  */
-bool DS18B20::check_presence() {
+bool DS18B20::check_presence() const {
     // Validate that reset pulse duration is within specification
     // and presence pulse timing indicates a responding device
     return (m_ctx.edge[0] >= RESET_PULSE_MIN) && (m_ctx.edge[0] <= RESET_PULSE_MAX) &&
@@ -302,6 +306,132 @@ void DS18B20::read_data() {
  * @{
  */
 
+// Методы-действия для состояний FSM
+void DS18B20::action_idle() {
+#if defined ELAPSED_TIME
+    elapsed_time = DWT->CYCCNT;
+#endif
+    // Initialize union memory (fills with 0xFF pattern)
+    m_ctx.fill_union = (uint64_t) -1;
+}
+
+void DS18B20::action_start() {
+    // Turn on LED to indicate measurement in progress
+    ds18b20_led_control(!0);
+    // Initiate 1-Wire bus reset sequence
+    reset_bus();
+}
+
+void DS18B20::action_convert_ok() {
+    // Device present - send temperature conversion command
+    send_command(conv_cmd.data());
+}
+
+void DS18B20::action_convert_fail() {
+    // No device present - report error and pause
+#if defined ELAPSED_TIME
+    ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_NO_SENSOR, DWT->CYCCNT - elapsed_time);
+#else
+    ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_NO_SENSOR);
+#endif
+    // Start inter-measurement pause
+    start_cycle_pause();
+}
+
+void DS18B20::action_wait() {
+    // Start timer for conversion wait period (750ms typical)
+    wait_conversion();
+}
+
+void DS18B20::action_continue() {
+    // Initiate second 1-Wire bus reset sequence
+    reset_bus();
+}
+
+void DS18B20::action_request_ok() {
+    // Device present - send read scratchpad command
+    send_command(read_cmd.data());
+}
+
+void DS18B20::action_request_fail() {
+    // No device present - report error and pause
+#if defined ELAPSED_TIME
+    ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_NO_SENSOR, DWT->CYCCNT - elapsed_time);
+#else
+    ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_NO_SENSOR);
+#endif
+    // Start inter-measurement pause
+    start_cycle_pause();
+}
+
+void DS18B20::action_read() {
+    // Initiate scratchpad data read using timer capture and DMA
+    read_data();
+}
+
+void DS18B20::action_decode() {
+    // Decode captured pulse durations into scratchpad bytes
+    decode_scratchpad();
+    detect_sensor_type();
+    // Turn off LED to indicate measurement complete
+    ds18b20_led_control(0);
+
+    // Validate CRC and report temperature or error
+#if defined ELAPSED_TIME
+    if (m_ctx.scratchpad[8] == check_scratchpad_crc()) {
+        // CRC valid - decode and report temperature
+        ds18b20_temp_ready(decode_temperature(), DWT->CYCCNT - elapsed_time);
+    } else {
+        // CRC invalid - report error
+        ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_CRC_FAIL, DWT->CYCCNT - elapsed_time);
+    }
+#else
+    if (m_ctx.scratchpad[8] == check_scratchpad_crc()) {
+        // CRC valid - decode and report temperature
+        ds18b20_temp_ready(decode_temperature());
+    } else {
+        // CRC invalid - report error
+        ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_CRC_FAIL);
+    }
+#endif
+
+    // Start inter-measurement pause period
+    start_cycle_pause();
+}
+
+// Таблица переходов FSM
+const DS18B20::Transition DS18B20::m_transitions[] = {
+        // IDLE -> START (безусловный, fallthrough - выполняем action_idle и сразу переходим в START)
+        {FsmStates::IDLE,     nullptr,                       &DS18B20::action_idle,         FsmStates::START},
+
+        // START -> CONVERT (безусловный)
+        {FsmStates::START,    nullptr,                       &DS18B20::action_start,        FsmStates::CONVERT},
+
+        // CONVERT -> WAIT (если присутствует)
+        {FsmStates::CONVERT,  &DS18B20::check_presence_ok,   &DS18B20::action_convert_ok,   FsmStates::WAIT},
+
+        // CONVERT -> IDLE (если отсутствует)
+        {FsmStates::CONVERT,  &DS18B20::check_presence_fail, &DS18B20::action_convert_fail, FsmStates::IDLE},
+
+        // WAIT -> CONTINUE (безусловный)
+        {FsmStates::WAIT,     nullptr,                       &DS18B20::action_wait,         FsmStates::CONTINUE},
+
+        // CONTINUE -> REQUEST (безусловный)
+        {FsmStates::CONTINUE, nullptr,                       &DS18B20::action_continue,     FsmStates::REQUEST},
+
+        // REQUEST -> READ (если присутствует)
+        {FsmStates::REQUEST,  &DS18B20::check_presence_ok,   &DS18B20::action_request_ok,   FsmStates::READ},
+
+        // REQUEST -> IDLE (если отсутствует)
+        {FsmStates::REQUEST,  &DS18B20::check_presence_fail, &DS18B20::action_request_fail, FsmStates::IDLE},
+
+        // READ -> DECODE (безусловный)
+        {FsmStates::READ,     nullptr,                       &DS18B20::action_read,         FsmStates::DECODE},
+
+        // DECODE -> IDLE (безусловный, CRC проверяется внутри)
+        {FsmStates::DECODE,   nullptr,                       &DS18B20::action_decode,       FsmStates::IDLE},
+};
+
 /**
  * @brief Initialize DS18B20 driver - configure clocks and peripherals
  */
@@ -343,142 +473,60 @@ void DS18B20::init() {
  * @note Uses timer update interrupt flag to determine when operations complete
  */
 void DS18B20::poll() {
-
-#if defined ELAPSED_TIME
-    static uint32_t elapsed_time;
-#endif
-
     // Check if timer update interrupt occurred (indicates operation completion)
     // This is the non-blocking way to detect when timed operations finish
     if (!(TIM1->SR & TIM_SR_UIF)) return;
     // Clear timer update interrupt flag
     TIM1->SR = 0;
 
-    // State machine to manage 1-Wire communication sequence
-    switch (m_ctx.current_state) {
-        case FsmStates::IDLE: // IDLE - Initialize for new measurement cycle
-#if defined ELAPSED_TIME
-            elapsed_time = DWT->CYCCNT;
-#endif
-            // Initialize union memory (fills with 0xFF pattern)
-            m_ctx.fill_union = (uint64_t) -1;
-            // Transition to START state
-            m_ctx.current_state = FsmStates::START;
-            /* fallthrough to START state immediately */
-            /* fallthrough  */
+    // Поиск подходящего перехода в таблице
+    bool transition_found = false;
+    bool need_fallthrough = false;
 
-        case FsmStates::START: // START - Begin measurement cycle, turn on LED
-            // Turn on LED to indicate measurement in progress
-            ds18b20_led_control(!0);
-            // Initiate 1-Wire bus reset sequence
-            reset_bus();
-            // Transition to CONVERT state
-            m_ctx.current_state = FsmStates::CONVERT;
-            break;
+    for (const auto &t: m_transitions) {
+        if (t.state == m_ctx.current_state) {
+            // Проверка условия (если есть)
+            if (!t.guard || (this->*t.guard)()) {
+                // Выполнение действия
+                (this->*t.action)();
+                // Переход в следующее состояние
+                m_ctx.current_state = t.next;
+                transition_found = true;
 
-        case FsmStates::CONVERT: // CONVERT - Check presence and send convert command
-            // Verify DS18B20 presence using captured edge timestamps
-            if (check_presence()) {
-                // Device present - send temperature conversion command
-                send_command(conv_cmd.data());
-                // Transition to WAIT state to allow conversion time
-                m_ctx.current_state = FsmStates::WAIT;
-            } else {
-                // No device present - report error and pause
-                ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_NO_SENSOR
-#if defined ELAPSED_TIME
-                        , DWT->CYCCNT - elapsed_time
-#endif
-                );
-                // Start inter-measurement pause
-                start_cycle_pause();
-                // Return to IDLE state
-                m_ctx.current_state = FsmStates::IDLE;
+                // Обработка fallthrough: IDLE -> START выполняется сразу
+                if (t.next == FsmStates::START) {
+                    need_fallthrough = true;
+                    // Продолжаем поиск для START
+                    continue;
+                }
+                break;
             }
-            break;
+        }
+    }
 
-        case FsmStates::WAIT: // WAIT - Wait for temperature conversion to complete
-            // Start timer for conversion wait period (750ms typical)
-            wait_conversion();
-            // Transition to CONTINUE state
-            m_ctx.current_state = FsmStates::CONTINUE;
-            break;
-
-        case FsmStates::CONTINUE: // CONTINUE - Prepare for data readback
-            // Initiate second 1-Wire bus reset sequence
-            reset_bus();
-            // Transition to REQUEST state
-            m_ctx.current_state = FsmStates::REQUEST;
-            break;
-
-        case FsmStates::REQUEST: // REQUEST - Check presence and send read command
-            // Verify DS18B20 presence again
-            if (check_presence()) {
-                // Device present - send read scratchpad command
-                send_command(read_cmd.data());
-                // Transition to READ state
-                m_ctx.current_state = FsmStates::READ;
-            } else {
-                // No device present - report error and pause
-                ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_NO_SENSOR
-#if defined ELAPSED_TIME
-                        , DWT->CYCCNT - elapsed_time
-#endif
-                );
-                // Start inter-measurement pause
-                start_cycle_pause();
-                // Return to IDLE state
-                m_ctx.current_state = FsmStates::IDLE;
+    // Если нужен fallthrough (IDLE -> START), выполняем START -> CONVERT сразу
+    if (need_fallthrough && m_ctx.current_state == FsmStates::START) {
+        for (const auto &t: m_transitions) {
+            if (t.state == FsmStates::START) {
+                if (!t.guard || (this->*t.guard)()) {
+                    (this->*t.action)();
+                    m_ctx.current_state = t.next;
+                    break;
+                }
             }
-            break;
+        }
+    }
 
-        case FsmStates::READ: // READ - Read scratchpad data from sensor
-            // Initiate scratchpad data read using timer capture and DMA
-            read_data();
-            // Transition to DECODE state
-            m_ctx.current_state = FsmStates::DECODE;
-            break;
-
-        case FsmStates::DECODE: // DECODE - Process received data and report temperature
-            // Decode captured pulse durations into scratchpad bytes
-            decode_scratchpad();
-            detect_sensor_type();
-            // Turn off LED to indicate measurement complete
-            ds18b20_led_control(0);
-
-            // Validate CRC and report temperature or error
-            if (m_ctx.scratchpad[8] == check_scratchpad_crc()) {
-                // CRC valid - decode and report temperature
-                ds18b20_temp_ready(decode_temperature()
+    // Если переход не найден - ошибка
+    if (!transition_found) {
+        // Unexpected state - report generic error
 #if defined ELAPSED_TIME
-                        , DWT->CYCCNT - elapsed_time
+        ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_GENERIC, DWT->CYCCNT - elapsed_time);
+#else
+        ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_GENERIC);
 #endif
-                );
-            } else {
-                // CRC invalid - report error
-                ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_CRC_FAIL
-#if defined ELAPSED_TIME
-                        , DWT->CYCCNT - elapsed_time
-#endif
-                );
-            }
-
-            // Start inter-measurement pause period
-            start_cycle_pause();
-            // Return to IDLE state for next measurement cycle
-            m_ctx.current_state = FsmStates::IDLE;
-            break;
-
-        default:
-            // Unexpected state - report generic error
-            ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_GENERIC
-#if defined ELAPSED_TIME
-                    , DWT->CYCCNT - elapsed_time
-#endif
-            );
-            // Return to IDLE state
-            m_ctx.current_state = FsmStates::IDLE;
-            break;
+        // Return to IDLE state
+        m_ctx.current_state = FsmStates::IDLE;
     }
 }
 

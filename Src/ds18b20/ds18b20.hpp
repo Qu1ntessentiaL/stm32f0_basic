@@ -49,6 +49,13 @@ class DS18B20 {
         FsmStates current_state;            /**< Current state of the state machine */
     } m_ctx;
 
+    struct Transition {
+        FsmStates state;                  ///< Исходное состояние
+        bool (DS18B20::*guard)() const;   ///< Условие перехода (nullptr = безусловный)
+        void (DS18B20::*action)();       ///< Действие при переходе
+        FsmStates next;                   ///< Целевое состояние
+    };
+
     uint8_t m_family = 0x28;
 
     inline void detect_sensor_type();
@@ -61,7 +68,11 @@ class DS18B20 {
 
     int16_t decode_temperature();
 
-    bool check_presence();
+    bool check_presence() const;
+    
+    // Вспомогательные методы для условий переходов
+    bool check_presence_ok() const { return check_presence(); }
+    bool check_presence_fail() const { return !check_presence(); }
 
     void start_timer(uint16_t arr, uint8_t rcr);
 
@@ -82,6 +93,20 @@ class DS18B20 {
     void send_command(const uint8_t *cmd);
 
     void read_data();
+
+    // Методы-действия для состояний FSM
+    void action_idle();
+    void action_start();
+    void action_convert_ok();
+    void action_convert_fail();
+    void action_wait();
+    void action_continue();
+    void action_request_ok();
+    void action_request_fail();
+    void action_read();
+    void action_decode();
+
+    static const Transition m_transitions[];
 
 public:
     /**
