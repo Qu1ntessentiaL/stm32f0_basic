@@ -21,6 +21,7 @@ public:
         Idle,    ///< Цель достигнута, нагрев не требуется.
         Heating, ///< Нужно греть, загорается зелёный светодиод.
         Error,   ///< Перегрев относительно цели, горит красный светодиод.
+
         Any      ///< Для перехода из любого состояния (wildcard)
     };
 
@@ -71,6 +72,8 @@ private:
     State actionDecreaseSetpoint(const Event &e);
     State actionIncreaseSetpoint(const Event &e);
     State actionPIDTick(const Event &e);
+    bool guardClickS1(const Event &e) const;
+    bool guardClickS2(const Event &e) const;
     bool isDouble(const Event &e);
     bool isComboShort(const Event &e);
 
@@ -106,6 +109,8 @@ private:
     static constexpr int ErrorDelta = 30;                       ///< Перегрев относительно цели (в десятых долях °C, 30 = 3.0°C).
     static constexpr uint32_t PidNominalSamplePeriodMs = 1000;  ///< Базовый период дискретизации PID.
     static constexpr int PidDeadband = 1;                       ///< Мёртвая зона PID (0.2°C).
+
+    bool m_s1Held = false, m_s2Held = false;
 
     /** PID-регулятор мощности нагрева (fixed-point integer) */
 

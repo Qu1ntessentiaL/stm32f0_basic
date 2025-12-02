@@ -16,6 +16,8 @@ enum class EventType : uint8_t {
     TemperatureReady,   ///< Fresh temperature sample is available (value holds Celsius degrees).
     Tick100ms,          ///< Legacy periodic event (unused).
     DisplayTimeout,     ///< Request to finish displaying the setpoint and revert to current temperature.
+
+    Any                 ///< Для перехода по любому событию (wildcard)
 };
 
 struct Event {

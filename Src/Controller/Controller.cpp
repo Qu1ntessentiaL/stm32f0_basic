@@ -16,28 +16,34 @@ namespace {
 }
 
 /**
- * @note Строки с .source == Controller::State::Any должны стоять после более конкретных,
- *       иначе wildcard "перехватит" событие раньше.
- *       Т.е. правильный порядок:
- *          1) Специфичные переходы (Idle, Heating, Error)
- *          2) Универсальные (Any)
+ * @note В коде имеются два механизма wildcard (переход из любого состояния (.source) и
+ *       переход по любому типу события (.signal) {что есть еще более сильный wildcard}).
+ *       Поля таблицы с wildcard по состоянию должны располагаться ниже более конкретных
+ *       (поля c Controller::State::Any ниже чем с Controller::State::Idle),
+ *       а с wildcard по типу события в самом внизу (поля с EventType::Any).
+ *       Иначе wildcard будут "перехватывать" все событие раньше, и реальные, специфичные переходы
+ *       никогда не выполнятся.
+ *
+ *       !!! Это ключевой момент!
  */
 const Controller::Transition Controller::transitions[] = {
+        /// Реальные, специфичные переходы
+        {EventType::Tick100ms,        Controller::State::Idle,    nullptr,                 &Controller::actionPIDTick,           Controller::State::Idle},
+        {EventType::Tick100ms,        Controller::State::Heating, nullptr,                 &Controller::actionPIDTick,           Controller::State::Heating},
+
+        /// Переходы, содержащие wildcard по состоянию
         // TemperatureReady: состояние вычисляется динамически через evaluateState()
-        {EventType::TemperatureReady, Controller::State::Idle,    nullptr,                 &Controller::actionTemperatureSample, Controller::ComputeState},
-        {EventType::TemperatureReady, Controller::State::Heating, nullptr,                 &Controller::actionTemperatureSample, Controller::ComputeState},
-        {EventType::TemperatureReady, Controller::State::Error,   nullptr,                 &Controller::actionTemperatureSample, Controller::ComputeState},
+        {EventType::TemperatureReady, Controller::State::Any,     nullptr,                 &Controller::actionTemperatureSample, Controller::ComputeState},
 
         // ButtonS1: уменьшение уставки, состояние вычисляется после изменения
-        {EventType::ButtonS1,         Controller::State::Any,     &Controller::guardPress, &Controller::actionDecreaseSetpoint,  Controller::ComputeState},
+        {EventType::ButtonS1,         Controller::State::Any,     &Controller::guardClickS1, &Controller::actionDecreaseSetpoint,  Controller::ComputeState},
         {EventType::ButtonS1,         Controller::State::Any,     &Controller::guardHeld,  &Controller::actionDecreaseSetpoint,  Controller::ComputeState},
 
         // ButtonS2: увеличение уставки, состояние вычисляется после изменения
-        {EventType::ButtonS2,         Controller::State::Any,     &Controller::guardPress, &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
+        {EventType::ButtonS2,         Controller::State::Any,     &Controller::guardClickS2, &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
         {EventType::ButtonS2,         Controller::State::Any,     &Controller::guardHeld,  &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
 
-        {EventType::Tick100ms,        Controller::State::Idle,    nullptr,                 &Controller::actionPIDTick,           Controller::State::Idle},
-        {EventType::Tick100ms,        Controller::State::Heating, nullptr,                 &Controller::actionPIDTick,           Controller::State::Heating},
+        /// Переходы, содержащие wildcard по типу события
 };
 
 /** Инициализация контроллера и синхронизация индикации. */
@@ -54,8 +60,19 @@ void Controller::init() {
 
 /** Обработка очередного события конечным автоматом. */
 void Controller::processEvent(const Event &e) {
+    // Обновляем флаги удержания для S1/S2
+    if (e.type == EventType::ButtonS1) {
+        if (e.value == 0) m_s1Held = false;      // Press
+        else if (e.value == 1) m_s1Held = true;  // Held
+    }
+
+    if (e.type == EventType::ButtonS2) {
+        if (e.value == 0) m_s2Held = false;
+        else if (e.value == 1) m_s2Held = true;
+    }
+
     for (const auto &transition: transitions) {
-        if (transition.signal != e.type) continue;
+        if (transition.signal != e.type && transition.signal != EventType::Any) continue;
         if (transition.source != m_state && transition.source != State::Any) continue;
         if (transition.guard && !(this->*transition.guard)(e)) continue;
 
@@ -91,6 +108,14 @@ bool Controller::guardPress(const Event &e) const {
 /** Guard: реагировать на повторные события «кнопка нажата» (value == 1). */
 bool Controller::guardHeld(const Event &e) const {
     return e.value == 1;
+}
+
+bool Controller::guardClickS1(const Event &e) const {
+    return e.value == 2 && !m_s1Held;
+}
+
+bool Controller::guardClickS2(const Event &e) const {
+    return e.value == 2 && !m_s2Held;
 }
 
 /** Action: сохранить новое измерение и перерассчитать состояние. */
