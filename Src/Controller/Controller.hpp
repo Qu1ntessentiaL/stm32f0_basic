@@ -3,6 +3,7 @@
 #include "EventQueue.hpp"
 #include "SystemTime.h"
 #include "PID.hpp"
+#include "BeepManager.hpp"
 
 /**
  * @brief Высокоуровневый термостат с табличным конечным автоматом.
@@ -14,6 +15,8 @@
  */
 class Controller {
 public:
+    Controller(BeepManager *beep) : m_beep(beep) {}
+
     /**
      * @brief Логические режимы работы термостата.
      */
@@ -72,6 +75,7 @@ private:
     State actionDecreaseSetpoint(const Event &e);
     State actionIncreaseSetpoint(const Event &e);
     State actionPIDTick(const Event &e);
+    State actionBeep(const Event &e);
     bool guardClickS1(const Event &e) const;
     bool guardClickS2(const Event &e) const;
     bool isDouble(const Event &e);
@@ -138,4 +142,6 @@ private:
      * Вызывается только из updateOutputsFor() когда состояние != Error.
      */
     int computeHeatingPower(uint32_t dtMs);
+
+    BeepManager *m_beep;
 };

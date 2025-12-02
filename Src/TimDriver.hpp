@@ -135,6 +135,23 @@ public:
 
     inline void Stop() { m_tim->CR1 &= ~TIM_CR1_CEN; }
 
+    void setFrequency(uint32_t frequency) {
+        if (frequency == 0) {
+            m_tim->CCR1 = 0;
+            return;
+        }
+
+        uint32_t timClk = 48000000;
+        uint32_t period = timClk / frequency;
+
+        uint16_t psc = period / 65535 + 1;
+        uint16_t arr = period / psc;
+
+        m_tim->PSC = psc - 1;
+        m_tim->ARR = arr - 1;
+        m_tim->CCR1 = arr / 2;
+    }
+
 private:
     TIM_TypeDef *m_tim;
     uint8_t m_channel;

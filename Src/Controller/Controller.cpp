@@ -34,15 +34,19 @@ const Controller::Transition Controller::transitions[] = {
         /// Переходы, содержащие wildcard по состоянию
         // TemperatureReady: состояние вычисляется динамически через evaluateState()
         {EventType::TemperatureReady, Controller::State::Any,     nullptr,                 &Controller::actionTemperatureSample, Controller::ComputeState},
-
         // ButtonS1: уменьшение уставки, состояние вычисляется после изменения
         {EventType::ButtonS1,         Controller::State::Any,     &Controller::guardClickS1, &Controller::actionDecreaseSetpoint,  Controller::ComputeState},
-        {EventType::ButtonS1,         Controller::State::Any,     &Controller::guardHeld,  &Controller::actionDecreaseSetpoint,  Controller::ComputeState},
+        {EventType::ButtonS1,         Controller::State::Any,     &Controller::guardHeld,    &Controller::actionDecreaseSetpoint,  Controller::ComputeState},
 
         // ButtonS2: увеличение уставки, состояние вычисляется после изменения
         {EventType::ButtonS2,         Controller::State::Any,     &Controller::guardClickS2, &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
-        {EventType::ButtonS2,         Controller::State::Any,     &Controller::guardHeld,  &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
+        {EventType::ButtonS2,         Controller::State::Any,     &Controller::guardHeld,    &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
 
+        // Звук при нажатии на кнопки
+        {EventType::ButtonS1,         Controller::State::Any,     nullptr,                   &Controller::actionBeep,              Controller::State::Any},
+        {EventType::ButtonS2,         Controller::State::Any,     nullptr,                   &Controller::actionBeep,              Controller::State::Any},
+        {EventType::ButtonS3,         Controller::State::Any,     nullptr,                   &Controller::actionBeep,              Controller::State::Any},
+        {EventType::ButtonS4,         Controller::State::Any,     nullptr,                   &Controller::actionBeep,              Controller::State::Any},
         /// Переходы, содержащие wildcard по типу события
 };
 
@@ -184,6 +188,13 @@ Controller::State Controller::actionPIDTick(const Event &) {
     return m_state; // Состояние не изменяем
 }
 
+Controller::State Controller::actionBeep(const Event &e) {
+    if (m_beep && e.value == 0) {
+        m_beep->requestBeep(); // короткий пик
+    }
+    return m_state; // состояние не меняем
+}
+
 bool Controller::isDouble(const Event &e) {
     return e.value == 3;
 }
@@ -226,7 +237,7 @@ void Controller::applyState(State newState) {
  * - State::Error -> мощность = 0
  * - State::Heating/Idle -> PID выдаёт 0..1000
  *
- * Светодиоды работают как раньше:
+ * Работа светодиодов:
  * - Зеленый горит, если power > 0
  * - Красный горит в Error
  */

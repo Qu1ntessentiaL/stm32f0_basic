@@ -3,7 +3,7 @@
 #include <cstdint>
 #include "uart.hpp"
 
-#define PRINT_PID
+// #define PRINT_PID
 
 /**
  * @brief Фиксированная-точность (integer-only) PID-регулятор.
