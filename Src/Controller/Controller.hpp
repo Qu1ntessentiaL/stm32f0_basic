@@ -20,7 +20,8 @@ public:
     enum class State : uint8_t {
         Idle,    ///< Цель достигнута, нагрев не требуется.
         Heating, ///< Нужно греть, загорается зелёный светодиод.
-        Error    ///< Перегрев относительно цели, горит красный светодиод.
+        Error,   ///< Перегрев относительно цели, горит красный светодиод.
+        Any      ///< Для перехода из любого состояния (wildcard)
     };
 
     /**
@@ -65,10 +66,13 @@ private:
 
     // Guard-функции и действия
     bool guardPress(const Event &e) const;
+    bool guardHeld(const Event &e) const;
     State actionTemperatureSample(const Event &e);
     State actionDecreaseSetpoint(const Event &e);
     State actionIncreaseSetpoint(const Event &e);
-    State actionPIDTick(const Event &);
+    State actionPIDTick(const Event &e);
+    bool isDouble(const Event &e);
+    bool isComboShort(const Event &e);
 
     // Управление состоянием
     State evaluateState() const;

@@ -70,56 +70,69 @@ private:
     uint32_t m_holdDeadline = 0;
 };
 
-class Buttons {
+class ButtonsManager {
 public:
-    Buttons(GPIO_TypeDef *portS1, uint8_t pinS1,
-            GPIO_TypeDef *portS2, uint8_t pinS2,
-            GPIO_TypeDef *portS3, uint8_t pinS3,
-            GPIO_TypeDef *portS4, uint8_t pinS4)
+    ButtonsManager(GPIO_TypeDef *portS1, uint8_t pinS1,
+                   GPIO_TypeDef *portS2, uint8_t pinS2,
+                   GPIO_TypeDef *portS3, uint8_t pinS3,
+                   GPIO_TypeDef *portS4, uint8_t pinS4)
             : btnS1(portS1, pinS1),
               btnS2(portS2, pinS2),
               btnS3(portS3, pinS3),
               btnS4(portS4, pinS4) {}
 
     void poll(EventQueue &queue) {
-        using BtnEvent = typename Button<>::Event;
+        handle(btnS1, EventType::ButtonS1, lastRelease[0], queue);
+        handle(btnS2, EventType::ButtonS2, lastRelease[1], queue);
+        handle(btnS3, EventType::ButtonS3, lastRelease[2], queue);
+        handle(btnS4, EventType::ButtonS4, lastRelease[3], queue);
 
-        auto eS1 = btnS1.tick();
-        if (eS1 == BtnEvent::Pressed)
-            queue.push({EventType::ButtonS1, 0});
-        else if (eS1 == BtnEvent::Held)
-            queue.push({EventType::ButtonS1, 1}); // Удержание
-        else if (eS1 == BtnEvent::Released)
-            queue.push({EventType::ButtonS1, 2});
-
-        auto eS2 = btnS2.tick();
-        if (eS2 == BtnEvent::Pressed)
-            queue.push({EventType::ButtonS2, 0});
-        else if (eS2 == BtnEvent::Held)
-            queue.push({EventType::ButtonS2, 1});
-        else if (eS2 == BtnEvent::Released)
-            queue.push({EventType::ButtonS2, 2});
-
-        auto eS3 = btnS3.tick();
-        if (eS3 == BtnEvent::Pressed)
-            queue.push({EventType::ButtonS3, 0});
-        else if (eS3 == BtnEvent::Held)
-            queue.push({EventType::ButtonS3, 1});
-        else if (eS3 == BtnEvent::Released)
-            queue.push({EventType::ButtonS3, 2});
-
-        auto eS4 = btnS4.tick();
-        if (eS4 == BtnEvent::Pressed)
-            queue.push({EventType::ButtonS4, 0});
-        else if (eS4 == BtnEvent::Held)
-            queue.push({EventType::ButtonS4, 1});
-        else if (eS4 == BtnEvent::Released)
-            queue.push({EventType::ButtonS4, 2});
+        checkCombination(queue);
     }
 
 private:
-    Button<> btnS1;
-    Button<> btnS2;
-    Button<> btnS3;
-    Button<> btnS4;
+    static constexpr uint32_t DoubleClickGap = 250; // мс
+    uint32_t lastRelease[4] = {0, 0, 0, 0};
+
+    Button<> btnS1, btnS2, btnS3, btnS4;
+
+    void handle(Button<> &b, EventType type, uint32_t &lastR, EventQueue &queue) {
+        const auto now = GetMsTicks();
+        auto e = b.tick();
+
+        if (e == Button<>::Event::Pressed) {
+            queue.push({type, 0});     // short press start
+        } else if (e == Button<>::Event::Held) {
+            queue.push({type, 1});     // hold
+        } else if (e == Button<>::Event::Released) {
+            if (now - lastR <= DoubleClickGap) {
+                queue.push({type, 3}); // double click code
+            } else {
+                queue.push({type, 2}); // normal release
+            }
+            lastR = now;
+        }
+    }
+
+    void checkCombination(EventQueue &queue) {
+        const bool s1 = !btnS1.Read();
+        const bool s2 = !btnS2.Read();
+        const uint32_t now = GetMsTicks();
+
+        static uint32_t comboStart = 0;
+
+        if (s1 && s2) {
+            if (comboStart == 0) comboStart = now;
+
+            if (now - comboStart > 400) { // long combo
+                queue.push({EventType::ButtonS1, 10}); // combo long
+                comboStart = 0;
+            }
+        } else {
+            if (comboStart != 0 && (now - comboStart < 400)) {
+                queue.push({EventType::ButtonS1, 9}); // short combo
+            }
+            comboStart = 0;
+        }
+    }
 };

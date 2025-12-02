@@ -15,6 +15,13 @@ namespace {
     }
 }
 
+/**
+ * @note Строки с .source == Controller::State::Any должны стоять после более конкретных,
+ *       иначе wildcard "перехватит" событие раньше.
+ *       Т.е. правильный порядок:
+ *          1) Специфичные переходы (Idle, Heating, Error)
+ *          2) Универсальные (Any)
+ */
 const Controller::Transition Controller::transitions[] = {
         // TemperatureReady: состояние вычисляется динамически через evaluateState()
         {EventType::TemperatureReady, Controller::State::Idle,    nullptr,                 &Controller::actionTemperatureSample, Controller::ComputeState},
@@ -22,14 +29,12 @@ const Controller::Transition Controller::transitions[] = {
         {EventType::TemperatureReady, Controller::State::Error,   nullptr,                 &Controller::actionTemperatureSample, Controller::ComputeState},
 
         // ButtonS1: уменьшение уставки, состояние вычисляется после изменения
-        {EventType::ButtonS1,         Controller::State::Idle,    &Controller::guardPress, &Controller::actionDecreaseSetpoint,  Controller::ComputeState},
-        {EventType::ButtonS1,         Controller::State::Heating, &Controller::guardPress, &Controller::actionDecreaseSetpoint,  Controller::ComputeState},
-        {EventType::ButtonS1,         Controller::State::Error,   &Controller::guardPress, &Controller::actionDecreaseSetpoint,  Controller::ComputeState},
+        {EventType::ButtonS1,         Controller::State::Any,     &Controller::guardPress, &Controller::actionDecreaseSetpoint,  Controller::ComputeState},
+        {EventType::ButtonS1,         Controller::State::Any,     &Controller::guardHeld,  &Controller::actionDecreaseSetpoint,  Controller::ComputeState},
 
         // ButtonS2: увеличение уставки, состояние вычисляется после изменения
-        {EventType::ButtonS2,         Controller::State::Idle,    &Controller::guardPress, &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
-        {EventType::ButtonS2,         Controller::State::Heating, &Controller::guardPress, &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
-        {EventType::ButtonS2,         Controller::State::Error,   &Controller::guardPress, &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
+        {EventType::ButtonS2,         Controller::State::Any,     &Controller::guardPress, &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
+        {EventType::ButtonS2,         Controller::State::Any,     &Controller::guardHeld,  &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
 
         {EventType::Tick100ms,        Controller::State::Idle,    nullptr,                 &Controller::actionPIDTick,           Controller::State::Idle},
         {EventType::Tick100ms,        Controller::State::Heating, nullptr,                 &Controller::actionPIDTick,           Controller::State::Heating},
@@ -51,7 +56,7 @@ void Controller::init() {
 void Controller::processEvent(const Event &e) {
     for (const auto &transition: transitions) {
         if (transition.signal != e.type) continue;
-        if (transition.source != m_state) continue;
+        if (transition.source != m_state && transition.source != State::Any) continue;
         if (transition.guard && !(this->*transition.guard)(e)) continue;
 
         // Определяем целевое состояние
@@ -81,6 +86,11 @@ void Controller::poll() {
 /** Guard: реагировать только на первое событие «нажата» (value == 0). */
 bool Controller::guardPress(const Event &e) const {
     return e.value == 0;
+}
+
+/** Guard: реагировать на повторные события «кнопка нажата» (value == 1). */
+bool Controller::guardHeld(const Event &e) const {
+    return e.value == 1;
 }
 
 /** Action: сохранить новое измерение и перерассчитать состояние. */
@@ -147,6 +157,14 @@ Controller::State Controller::actionPIDTick(const Event &) {
     // Периодически переустанавливаем выходы, чтобы учесть PWM/индикацию.
     updateOutputsFor(m_state);
     return m_state; // Состояние не изменяем
+}
+
+bool Controller::isDouble(const Event &e) {
+    return e.value == 3;
+}
+
+bool Controller::isComboShort(const Event &e) {
+    return e.value == 9;
 }
 
 /** Высчитать новое состояние автомата, исходя из текущих температур. */
