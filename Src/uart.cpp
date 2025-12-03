@@ -1,5 +1,5 @@
 #include "uart.hpp"
-#include "Controller/EventQueue.hpp"
+#include "AppContext.hpp"
 
 // ======== Config: printing buffer size (power of two) ========
 #ifndef UART_TX_BUF_SIZE
@@ -21,7 +21,7 @@ static uint8_t uart_tx_head = 0;                     // write index - points to 
 static uint8_t uart_tx_tail = 0;                     // read index - points to oldest data
 static uint8_t uart_tx_buf[UART_TX_BUF_SIZE];        // circular buffer for UART transmission
 
-extern EventQueue *queue_ptr;
+extern App app;
 
 /**
  * @brief Non-blocking function to enqueue a single byte into the UART transmit buffer
@@ -113,23 +113,6 @@ void hardware_init() {
 }
 
 /**
- * @brief Weak implementation for DS18B20 LED control - provides visual feedback
- * @param[in] action 0 to turn LED off, non-zero to turn LED on
- * @note Non-blocking LED control using atomic BSRR register operations
- */
-void ds18b20_led_control(unsigned action) {
-    if (action) {
-        // Turn LED on (PC13 low due to pull-up LED configuration)
-        // BSRR BR register: atomic bit reset operation
-        GPIOA->BSRR = GPIO_BSRR_BR_11;
-    } else {
-        // Turn LED off (PC13 high)
-        // BSRR BS register: atomic bit set operation
-        GPIOA->BSRR = GPIO_BSRR_BS_11;
-    }
-}
-
-/**
  * @brief Convert integer to string and enqueue for UART transmission
  * @param[in] value Integer value to convert and transmit
  */
@@ -157,45 +140,4 @@ void uart_write_int(int value) {
         if (is_negative) *(--p) = '-'; // Add negative sign if needed
     }
     (void) uart_write_str(p); // best-effort enqueue to UART buffer
-}
-
-/**
- * @brief Weak implementation for DS18B20 temperature ready callback - handles temperature display
- * @param[in] temp Temperature value in tenths of degrees Celsius, or error code
- */
-#if defined ELAPSED_TIME
-void ds18b20_temp_ready(int16_t temp, uint32_t t) {
-#else
-
-void ds18b20_temp_ready(int16_t temp) {
-#endif
-    if (temp == DS18B20::ErrorStatus::TEMP_ERROR_NO_SENSOR) { // No sensor detected error - enqueue error message
-        uart_write_str("DS18B20 error: no sensor detected.\r\n");
-    } else if (temp == DS18B20::ErrorStatus::TEMP_ERROR_CRC_FAIL) { // CRC check failed error - enqueue error message
-        uart_write_str("DS18B20 error: CRC check failed.\r\n");
-    } else if (temp == DS18B20::ErrorStatus::TEMP_ERROR_GENERIC) { // Generic error - enqueue error message
-        uart_write_str("DS18B20 error: generic failure.\r\n");
-    } else {                                 // Valid temperature reading - format and display
-        int whole = temp / 10;               // Get whole degrees (temp is in tenths)
-        int frac = temp % 10;                // Get fractional part (tenths)
-        if (frac < 0) frac = -frac;          // Ensure fractional part is positive
-#if defined PRINT_TEMP
-        uart_write_str("Temperature: ");
-        uart_write_int(whole);          // Display whole part
-        uart_write_str(".");               // Decimal point
-        uart_write_int(frac);           // Display fractional part
-        uart_write_str(" C");              // Units
-#if defined ELAPSED_TIME
-        uart_write_str(" (");   // Parenthesis
-        uart_write_int(t / 48); // Display time elapsed
-        uart_write_str(" us)"); // Parenthesis
-#endif
-        uart_write_str("\r\n");     // And newline
-#endif
-
-        if (queue_ptr) {
-            // temp уже в десятых долях градуса, передаём как есть
-            queue_ptr->push({EventType::TemperatureReady, temp});
-        }
-    }
 }

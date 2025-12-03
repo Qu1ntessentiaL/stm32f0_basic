@@ -1,13 +1,5 @@
 #include "Controller.hpp"
 
-#include "GpioDriver.hpp"
-#include "ht1621.hpp"
-#include "TimDriver.hpp"
-
-extern GpioDriver *red_led_ptr;
-extern HT1621B *disp_ptr;
-extern PwmDriver *heater_ptr;
-
 namespace {
     /** Возвращает абсолютный срок для таймаута (now + delta). */
     inline uint32_t make_deadline(uint32_t now, uint32_t delta) {
@@ -249,8 +241,8 @@ void Controller::updateOutputsFor(State state) {
     if (power > 1000) power = 1000;
 
     // Управление нагревателем (PWM)
-    if (heater_ptr) {
-        heater_ptr->setPower(power);
+    if (m_heater) {
+        m_heater->setPower(power);
         // setPower ожидает значение от 0 до 1000 (0..100%)
     }
 }
@@ -268,9 +260,9 @@ void Controller::displaySetpointTemperature() {
 
 /** Универсальный вывод значения на индикатор HT1621. */
 void Controller::displayTemperature(char label, int value) {
-    if (!disp_ptr) return;
+    if (!m_display) return;
 
-    disp_ptr->ClearSegArea(false);
+    m_display->ClearSegArea(false);
 
     // value уже в десятых долях градуса, ограничиваем диапазон
     int clamped = value;
@@ -301,8 +293,8 @@ void Controller::displayTemperature(char label, int value) {
     }
     text[5] = static_cast<char>('0' + frac);
 
-    disp_ptr->ShowString(text, false);
-    disp_ptr->ShowDot(1, true, true);
+    m_display->ShowString(text, false);
+    m_display->ShowDot(1, true, true);
 }
 
 /** Проверить, не истёк ли таймаут отображения уставки. */

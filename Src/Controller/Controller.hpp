@@ -1,7 +1,10 @@
 #pragma once
 
+#include "GpioDriver.hpp"
+#include "ht1621.hpp"
+#include "TimDriver.hpp"
 #include "EventQueue.hpp"
-#include "SystemTime.h"
+#include "AppContext.hpp"
 #include "PID.hpp"
 #include "BeepManager.hpp"
 
@@ -15,7 +18,10 @@
  */
 class Controller {
 public:
-    Controller(BeepManager *beep) : m_beep(beep) {}
+    Controller(HT1621B *display, BeepManager *beepManager, PwmDriver *heater) :
+            m_display(display),
+            m_beep(beepManager),
+            m_heater(heater) {}
 
     /**
      * @brief Логические режимы работы термостата.
@@ -143,5 +149,10 @@ private:
      */
     int computeHeatingPower(uint32_t dtMs);
 
+    /**
+     * @brief Указатели на исполнительные механизмы для класса Controller
+     */
+    HT1621B *m_display;
     BeepManager *m_beep;
+    PwmDriver *m_heater;
 };

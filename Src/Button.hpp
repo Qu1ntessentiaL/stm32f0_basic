@@ -2,7 +2,7 @@
 
 #include "stm32f0xx.h"
 #include "GpioDriver.hpp"
-#include "SystemTime.h"
+#include "AppContext.hpp"
 #include "EventQueue.hpp"
 
 /**

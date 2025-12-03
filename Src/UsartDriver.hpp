@@ -6,10 +6,12 @@
 template<uint32_t Baudrate = 115200,
         uint16_t TxBuffSize = 256>
 class UsartDriver {
-    // ======== USART1 TX ring buffer ========
-    uint8_t tx_head = 0;               // write index - points to next free slot
-    uint8_t tx_tail = 0;               // read index - points to the oldest data
-    uint8_t tx_buf[TxBuffSize] = {};   // circular buffer for UART transmission
+    /**
+     * @brief USART1 TX ring buffer
+     */
+    uint8_t tx_head = 0;               ///< write index - points to next free slot
+    uint8_t tx_tail = 0;               ///< read index - points to the oldest data
+    uint8_t tx_buf[TxBuffSize] = {};   ///< circular buffer for UART transmission
 
     static inline void EnableClock() {
         if (!(RCC->APB2ENR & RCC_APB2ENR_USART1EN)) {

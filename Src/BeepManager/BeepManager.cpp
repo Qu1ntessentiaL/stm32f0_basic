@@ -1,5 +1,5 @@
 #include "BeepManager.hpp"
-#include "SystemTime.h"
+#include "AppContext.hpp"
 
 void BeepManager::requestBeep(uint16_t freq, uint16_t duration) {
     m_freq = freq;

@@ -12,60 +12,41 @@
  */
 #include "fw_info.h"
 
-#include "GpioDriver.hpp"
-#include "Button.hpp"
-#include "RccDriver.hpp"
+#include "stm32f0xx_it.hpp"
 
-#include "ht1621.hpp"
-#include "ds18b20.hpp"
-#include "uart.hpp"
-
-#include "TimDriver.hpp"
+#include "AppContext.hpp"
 #include "Controller.hpp"
-#include "BeepManager.hpp"
+#include "RccDriver.hpp"
+#include "Button.hpp"
 
-TimDriver *tim17_ptr = nullptr;
-
-DS18B20 *sens_ptr = nullptr;
-
-HT1621B *disp_ptr = nullptr;
-
-EventQueue *queue_ptr = nullptr;
-
-Controller *ctrl_ptr = nullptr;
-
-PwmDriver *heater_ptr = nullptr;
-
-GpioDriver *red_led_ptr = nullptr,
-        *green_led_ptr = nullptr,
-        *charger_ptr = nullptr;
+App app{};
 
 void doHeavyWork() {
     static uint8_t i = 0;
-    disp_ptr->ShowChargeLevel(i++, true);
+    app.disp->ShowChargeLevel(i++, true);
     if (i > 3) i = 0;
 }
 
-void print_fw_info() {
+void print_fw_info(UsartDriver<> *uart) {
     // Проверим magic
     if (fw_info.magic != 0xDEADBEEF) {
-        uart_write_str("FW info not valid\r\n");
+        uart->write_str("FW info not valid\r\n");
         return;
     }
 
-    uart_write_str("=== Firmware Info ===\r\n");
+    uart->write_str("=== Firmware Info ===\r\n");
 
     // Выводим тег без snprintf
-    uart_write_str("Tag: ");
-    uart_write_str(fw_info.tag);
-    uart_write_str("\r\n");
+    uart->write_str("Tag: ");
+    uart->write_str(fw_info.tag);
+    uart->write_str("\r\n");
 
     // Выводим коммит без snprintf
-    uart_write_str("Commit: ");
-    uart_write_str(fw_info.commit);
-    uart_write_str("\r\n");
+    uart->write_str("Commit: ");
+    uart->write_str(fw_info.commit);
+    uart->write_str("\r\n");
 
-    uart_write_str("=====================\r\n");
+    uart->write_str("=====================\r\n");
 }
 
 int main() {
@@ -90,17 +71,23 @@ int main() {
 
     static PwmDriver piezo(TIM14, 1);
     piezo.Init(47, 499);
+
     static BeepManager beep(piezo);
 
     static EventQueue queue;
-    queue_ptr = &queue;
+    app.queue = &queue;
 
-    static Controller ctrl(&beep);
-    ctrl_ptr = &ctrl;
+    static HT1621B disp{};
+    app.disp = &disp;
 
-    green_led_ptr = &green_led;
-    red_led_ptr = &red_led;
-    charger_ptr = &charger;
+    static PwmDriver pwm(TIM3, 1);
+    pwm.Init(47, 999);
+
+    static Controller ctrl(&disp, &beep, &pwm);
+
+    app.green_led = &green_led;
+    app.red_led = &red_led;
+    app.charger = &charger;
 
     light.Init(GpioDriver::Mode::Output,
                GpioDriver::OutType::PushPull,
@@ -113,54 +100,52 @@ int main() {
                   GpioDriver::Pull::None,
                   GpioDriver::Speed::Medium);
 
-    green_led_ptr->Init(GpioDriver::Mode::Alternate,
+    app.green_led->Init(GpioDriver::Mode::Alternate,
                         GpioDriver::OutType::PushPull,
                         GpioDriver::Pull::None,
                         GpioDriver::Speed::High);
-    green_led_ptr->SetAlternateFunction(1); // TIM3_CH1
+    app.green_led->SetAlternateFunction(1); // TIM3_CH1
 
-    static PwmDriver pwm(TIM3, 1);
-    heater_ptr = &pwm;
-    heater_ptr->Init(47, 999);
 
-    red_led_ptr->Init(GpioDriver::Mode::Output,
+    app.red_led->Init(GpioDriver::Mode::Output,
                       GpioDriver::OutType::PushPull,
                       GpioDriver::Pull::None,
                       GpioDriver::Speed::Medium);
-    red_led_ptr->Reset();
+    app.red_led->Reset();
 
     charger.Init(GpioDriver::Mode::Input);
 
     static TimDriver tim17(TIM17);
-    //tim17.setCallback(tim17_callback);
     tim17.Init(47, 999);
     tim17.Start();
-    tim17_ptr = &tim17;
+    IRQ::registerTim17(&tim17);
 
-    static HT1621B disp{};
-    disp_ptr = &disp;
     ctrl.init();
 
     static DS18B20 sens{};
-    sens_ptr = &sens;
+    app.sens = &sens;
     sens.init();   // Initialize DS18B20 driver (non-blocking)
 
-    hardware_init(); // Initialize hardware peripherals (non-blocking)
-    print_fw_info();
-    uart_write_str("DS18B20 demo starting...\r\n"); // Enqueue startup message to UART buffer
+    static UsartDriver<> uart1;
+    uart1.Init(SystemCoreClock);
+    app.uart = &uart1;
+    //hardware_init(); // Initialize hardware peripherals (non-blocking)
+    print_fw_info(&uart1);
+    uart1.write_str("DS18B20 demo starting...\r\n"); // Enqueue startup message to UART buffer
 
     ButtonsManager buttons(GPIOA, 1,
                            GPIOA, 2,
                            GPIOA, 3,
                            GPIOA, 4);
+
     DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP;
     DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_TIM3_STOP;
     DBGMCU->APB2FZ |= DBGMCU_APB2_FZ_DBG_TIM17_STOP;
     __enable_irq();
 
     while (true) {
-        sens_ptr->poll();
-        uart_poll_tx();
+        app.sens->poll();
+        uart1.poll_tx();
         buttons.poll(queue);
         ctrl.poll();
         beep.poll();
@@ -173,10 +158,10 @@ int main() {
 
             if (tickCounter >= 100) { // раз в 100 мс
                 tickCounter = 0;
-                queue_ptr->push({EventType::Tick100ms, 0});
+                app.queue->push({EventType::Tick100ms, 0});
             }
 
-            if (charger_ptr->Read()) {
+            if (app.charger->Read()) {
                 static uint8_t subcounter = 0;
                 subcounter++;
 
@@ -185,7 +170,7 @@ int main() {
                     doHeavyWork();
                 }
             } else {
-                disp_ptr->ShowChargeLevel(0, true);
+                app.disp->ShowChargeLevel(0, true);
             }
         }
 

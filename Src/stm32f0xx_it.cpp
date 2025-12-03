@@ -1,9 +1,19 @@
-#include "TimDriver.hpp"
-#include "SystemTime.h"
+#include "stm32f0xx_it.hpp"
+#include "AppContext.hpp"
 
 volatile uint32_t g_msTicks = 0;
 
-extern TimDriver *tim17_ptr;
+static TimDriver *tim17_cb = nullptr;
+
+namespace IRQ {
+    void registerTim17(TimDriver *drv) {
+        tim17_cb = drv;
+    }
+
+    TimDriver *getTim17() {
+        return tim17_cb;
+    }
+} // namespace IRQ
 
 extern "C" {
 
@@ -24,8 +34,9 @@ void EXTI4_15_IRQHandler(void) {}
 void USART1_IRQHandler(void) {}
 
 void TIM17_IRQHandler(void) {
-    if (tim17_ptr) {
-        tim17_ptr->handleIRQ();
+    auto drv = IRQ::getTim17();
+    if (drv) {
+        drv->handleIRQ();
     }
 }
 

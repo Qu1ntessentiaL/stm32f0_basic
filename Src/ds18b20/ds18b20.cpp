@@ -3,6 +3,13 @@
 #include <cstdint>
 #include <array>
 
+#include "EventQueue.hpp"
+#include "AppContext.hpp"
+
+#define PRINT_TEMP
+
+extern App app;
+
 #if defined ELAPSED_TIME
 static uint32_t elapsed_time;
 #endif
@@ -108,27 +115,61 @@ void DS18B20::ForceUpdateEvent(TIM_TypeDef *tim) {
  */
 
 /**
- * @brief Default weak implementation for LED control - provides visual feedback during operations
+ * @brief Weak implementation for DS18B20 LED control - provides visual feedback
  * @param[in] action 0 to turn LED off, non-zero to turn LED on
+ * @note Non-blocking LED control using atomic BSRR register operations
  */
-__WEAK void ds18b20_led_control(unsigned action) {
-    (void) action;
-    // Default implementation - empty (no LED control)
+void ds18b20_led_control(unsigned action) {
+    if (action) {
+        // Turn LED on (PC13 low due to pull-up LED configuration)
+        // BSRR BR register: atomic bit reset operation
+        GPIOA->BSRR = GPIO_BSRR_BR_11;
+    } else {
+        // Turn LED off (PC13 high)
+        // BSRR BS register: atomic bit set operation
+        GPIOA->BSRR = GPIO_BSRR_BS_11;
+    }
 }
 
 /**
- * @brief Default weak implementation for temperature ready callback - reports results
- * @param[in] temp_tenths Temperature value in tenths of degrees Celsius, or error code
+ * @brief Weak implementation for DS18B20 temperature ready callback - handles temperature display
+ * @param[in] temp Temperature value in tenths of degrees Celsius, or error code
  */
 #if defined ELAPSED_TIME
-__WEAK void ds18b20_temp_ready(int16_t temp_tenths, uint32_t t) {
-    (void)t;
+void ds18b20_temp_ready(int16_t temp, uint32_t t) {
 #else
 
-__WEAK void ds18b20_temp_ready(int16_t temp_tenths) {
+void ds18b20_temp_ready(int16_t temp) {
 #endif
-    (void) temp_tenths;
-    // Default implementation - empty (no temperature handling)
+    if (temp == DS18B20::ErrorStatus::TEMP_ERROR_NO_SENSOR) { // No sensor detected error - enqueue error message
+        app.uart->write_str("DS18B20 error: no sensor detected.\r\n");
+    } else if (temp == DS18B20::ErrorStatus::TEMP_ERROR_CRC_FAIL) { // CRC check failed error - enqueue error message
+        app.uart->write_str("DS18B20 error: CRC check failed.\r\n");
+    } else if (temp == DS18B20::ErrorStatus::TEMP_ERROR_GENERIC) { // Generic error - enqueue error message
+        app.uart->write_str("DS18B20 error: generic failure.\r\n");
+    } else {                                 // Valid temperature reading - format and display
+        int whole = temp / 10;               // Get whole degrees (temp is in tenths)
+        int frac = temp % 10;                // Get fractional part (tenths)
+        if (frac < 0) frac = -frac;          // Ensure fractional part is positive
+#if defined PRINT_TEMP
+        app.uart->write_str("Temperature: ");
+        app.uart->write_int(whole);          // Display whole part
+        app.uart->write_str(".");               // Decimal point
+        app.uart->write_int(frac);           // Display fractional part
+        app.uart->write_str(" C");              // Units
+#if defined ELAPSED_TIME
+        app.uart->write_str(" (");   // Parenthesis
+        app.uart->write_int(t / 48); // Display time elapsed
+        app.uart->write_str(" us)"); // Parenthesis
+#endif
+        app.uart->write_str("\r\n");     // And newline
+#endif
+
+        if (app.queue) {
+            // temp уже в десятых долях градуса, передаём как есть
+            app.queue->push({EventType::TemperatureReady, temp});
+        }
+    }
 }
 
 /**
