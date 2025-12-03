@@ -1,15 +1,3 @@
-/**
- * I2C1_SDA [PB7] - R17
- * I2C1_SCL [PB6] - R12
- * UART1_RX [PA10] - X2.1
- * UART1_TX [PA9] - X2.2
- * Resistor R8  -> PA7
- * Resistor R10 -> PA11
- * Resistor R13 -> PA5
- * Resistor R14 -> PA6
- * Resistor R18 -> PA0
- * Resistor R20 -> PA12
- */
 #include "fw_info.h"
 
 #include "stm32f0xx_it.hpp"
@@ -25,28 +13,6 @@ void doHeavyWork() {
     static uint8_t i = 0;
     app.disp->ShowChargeLevel(i++, true);
     if (i > 3) i = 0;
-}
-
-void print_fw_info(UsartDriver<> *uart) {
-    // Проверим magic
-    if (fw_info.magic != 0xDEADBEEF) {
-        uart->write_str("FW info not valid\r\n");
-        return;
-    }
-
-    uart->write_str("=== Firmware Info ===\r\n");
-
-    // Выводим тег без snprintf
-    uart->write_str("Tag: ");
-    uart->write_str(fw_info.tag);
-    uart->write_str("\r\n");
-
-    // Выводим коммит без snprintf
-    uart->write_str("Commit: ");
-    uart->write_str(fw_info.commit);
-    uart->write_str("\r\n");
-
-    uart->write_str("=====================\r\n");
 }
 
 int main() {
@@ -129,7 +95,6 @@ int main() {
     static UsartDriver<> uart1;
     uart1.Init(SystemCoreClock);
     app.uart = &uart1;
-    //hardware_init(); // Initialize hardware peripherals (non-blocking)
     print_fw_info(&uart1);
     uart1.write_str("DS18B20 demo starting...\r\n"); // Enqueue startup message to UART buffer
 
@@ -176,12 +141,12 @@ int main() {
 
         if (auto e = queue.pop()) {
             if (e->type == EventType::ButtonS3 && e->value == 0) {
-                uart_write_str("S1 pressed -> beep\r\n");
+                uart1.write_str("S1 pressed -> beep\r\n");
                 piezo.setPower(500);
             }
 
             if (e->type == EventType::ButtonS3 && e->value == 2) {
-                uart_write_str("S1 released-> stop beep\r\n");
+                uart1.write_str("S1 released-> stop beep\r\n");
                 piezo.setPower(0);
             }
 

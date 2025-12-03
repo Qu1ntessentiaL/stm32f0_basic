@@ -7,7 +7,8 @@ file(GLOB_RECURSE SOURCES
 
 # Исключаем указанные файлы
 set(EXCLUDE_FILES
-        ${CMAKE_CURRENT_LIST_DIR}/chlib_stub.c
+        ${CMAKE_CURRENT_LIST_DIR}/Legacy/chlib_stub.c
+        ${CMAKE_CURRENT_LIST_DIR}/I2C/TwiDriver.cpp
 )
 
 foreach (file ${EXCLUDE_FILES})

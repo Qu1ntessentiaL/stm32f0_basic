@@ -6,7 +6,7 @@
 #include "EventQueue.hpp"
 #include "AppContext.hpp"
 
-#define PRINT_TEMP
+// #define PRINT_TEMP
 
 extern App app;
 
