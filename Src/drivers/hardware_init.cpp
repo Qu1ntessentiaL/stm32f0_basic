@@ -53,6 +53,12 @@ void hardware_init(App& app) {
 
     charger.Init(GpioDriver::Mode::Input);
 
+    buzzer.Init(GpioDriver::Mode::Alternate,
+                GpioDriver::OutType::PushPull,
+                GpioDriver::Pull::None,
+                GpioDriver::Speed::High);
+    buzzer.SetAlternateFunction(0); // TIM14_CH1
+
     app.red_led = &red_led;
     app.green_led = &green_led;
     app.blue_led = &blue_led;

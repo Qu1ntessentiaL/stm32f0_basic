@@ -17,7 +17,7 @@ add_executable(${PROJECT_NAME}
         ${STARTUP_FILE}
 )
 
-include(Src/app.cmake)
+include(Src/src.cmake)
 
 add_subdirectory(Drivers/CMSIS)
 # add_subdirectory(Drivers/os)

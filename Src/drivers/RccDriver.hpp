@@ -1,8 +1,17 @@
-#include "RccDriver.hpp"
+#pragma once
+
+#include "stm32f0xx.h"
+#include "GpioDriver.hpp"
 
 namespace RccDriver {
+    /**
+     *   Глобальный таймер миллисекунд — системная подсистема.
+     *   Вынесено в System.hpp, чтобы AppContext не зависел
+     *   от конкретной реализации SysTick.
+     */
+    extern volatile uint32_t g_msTicks;
 
-    uint32_t GetMsTicks() {
+    inline uint32_t GetMsTicks() {
         return g_msTicks;
     }
 
@@ -28,7 +37,7 @@ namespace RccDriver {
         SystemCoreClockUpdate();
     }
 
-    void InitMCO() {
+    inline void InitMCO() {
         GpioDriver mco(GPIOA, 8);
         mco.SetAlternateFunction(0);
 
@@ -37,7 +46,7 @@ namespace RccDriver {
         RCC->CFGR |= RCC_CFGR_MCOPRE_DIV16;
     }
 
-    void IWDG_Init() {
+    inline void IWDG_Init() {
         // 1. Включить LSI (если еще не включен)
         RCC->CSR |= RCC_CSR_LSION;
         while ((RCC->CSR & RCC_CSR_LSIRDY) == 0) {
@@ -62,8 +71,8 @@ namespace RccDriver {
         IWDG->KR = 0xCCCC;
     }
 
-    void IWDG_Reload() {
+    inline void IWDG_Reload() {
         // Обновление watchdog
         IWDG->KR = 0xAAAA;
     }
-}
+} // namespace RccDriver

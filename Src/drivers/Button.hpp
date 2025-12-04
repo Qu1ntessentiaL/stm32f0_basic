@@ -102,13 +102,13 @@ private:
 
         if (e == Button<>::Event::Pressed) {
             queue.push({type, 0});     // short press start
+            lastR = 0;
         } else if (e == Button<>::Event::Held) {
             queue.push({type, 1});     // hold
         } else if (e == Button<>::Event::Released) {
+            queue.push({type, 2});
             if (now - lastR <= DoubleClickGap) {
                 queue.push({type, 3}); // double click code
-            } else {
-                queue.push({type, 2}); // normal release
             }
             lastR = now;
         }
