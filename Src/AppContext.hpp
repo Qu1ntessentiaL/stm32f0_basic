@@ -4,22 +4,32 @@
 
 #include "UsartDriver.hpp"
 #include "TimDriver.hpp"
-#include "EventQueue.hpp"
+#include "GpioDriver.hpp"
 #include "ht1621.hpp"
 #include "ds18b20.hpp"
+#include "Button.hpp"
+#include "Controller.hpp"
 
+/**
+ *   Контекст приложения (Dependency Injection Container)
+ */
 struct App {
-    DS18B20 *sens;
-    HT1621B *disp;
-    EventQueue *queue;
-    GpioDriver *red_led;
-    GpioDriver *green_led;
-    GpioDriver *charger;
-    UsartDriver<> *uart;
+    // Hardware-level (низкоуровневые драйверы)
+    UsartDriver<>   *uart = nullptr;
+    TimDriver       *tim17 = nullptr;
+    DS18B20         *sensor = nullptr;
+    HT1621B         *display = nullptr;
+    GpioDriver      *red_led = nullptr;
+    GpioDriver      *green_led = nullptr;
+    GpioDriver      *blue_led = nullptr;
+    GpioDriver      *light = nullptr;
+    GpioDriver      *charger = nullptr;
+    PwmDriver       *heater = nullptr;
+    PwmDriver       *piezo = nullptr;
+    ButtonsManager  *buttons = nullptr;
+
+    // Application-level services
+    EventQueue      *queue = nullptr;
+    BeepManager     *beep = nullptr;
+    Controller      *ctrl = nullptr;
 };
-
-extern volatile uint32_t g_msTicks;
-
-inline uint32_t GetMsTicks() {
-    return g_msTicks;
-}

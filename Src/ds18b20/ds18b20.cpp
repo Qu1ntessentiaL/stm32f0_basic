@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <array>
 
-#include "EventQueue.hpp"
+#include "Event.hpp"
 #include "AppContext.hpp"
 
 // #define PRINT_TEMP

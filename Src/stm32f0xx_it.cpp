@@ -1,7 +1,11 @@
 #include "stm32f0xx_it.hpp"
 #include "AppContext.hpp"
 
-volatile uint32_t g_msTicks = 0;
+using namespace RccDriver;
+
+namespace RccDriver {
+    volatile uint32_t g_msTicks = 0;
+}
 
 static TimDriver *tim17_cb = nullptr;
 

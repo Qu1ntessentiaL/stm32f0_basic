@@ -1,5 +1,7 @@
 #include "Controller.hpp"
 
+using namespace RccDriver;
+
 namespace {
     /** Возвращает абсолютный срок для таймаута (now + delta). */
     inline uint32_t make_deadline(uint32_t now, uint32_t delta) {

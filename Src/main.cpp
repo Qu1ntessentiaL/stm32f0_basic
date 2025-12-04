@@ -1,20 +1,13 @@
-#include "fw_info.h"
-
-#include "stm32f0xx_it.hpp"
-
 #include "AppContext.hpp"
-#include "Controller.hpp"
-#include "RccDriver.hpp"
-#include "Button.hpp"
+#include "hardware_init.hpp"
+#include "services_init.hpp"
+#include "app_loop.hpp"
+
+#include "stm32f0xx.h"
 
 App app{};
 
-void doHeavyWork() {
-    static uint8_t i = 0;
-    app.disp->ShowChargeLevel(i++, true);
-    if (i > 3) i = 0;
-}
-
+/*
 int main() {
     __disable_irq();
     RccDriver::InitMax48MHz();
@@ -44,7 +37,7 @@ int main() {
     app.queue = &queue;
 
     static HT1621B disp{};
-    app.disp = &disp;
+    app.display = &disp;
 
     static PwmDriver pwm(TIM3, 1);
     pwm.Init(47, 999);
@@ -89,11 +82,11 @@ int main() {
     ctrl.init();
 
     static DS18B20 sens{};
-    app.sens = &sens;
+    app.sensor = &sens;
     sens.init();   // Initialize DS18B20 driver (non-blocking)
 
     static UsartDriver<> uart1;
-    uart1.Init(SystemCoreClock);
+    UsartDriver<>::Init(SystemCoreClock);
     app.uart = &uart1;
     print_fw_info(&uart1);
     uart1.write_str("DS18B20 demo starting...\r\n"); // Enqueue startup message to UART buffer
@@ -109,7 +102,7 @@ int main() {
     __enable_irq();
 
     while (true) {
-        app.sens->poll();
+        app.sensor->poll();
         uart1.poll_tx();
         buttons.poll(queue);
         ctrl.poll();
@@ -135,7 +128,7 @@ int main() {
                     doHeavyWork();
                 }
             } else {
-                app.disp->ShowChargeLevel(0, true);
+                app.display->ShowChargeLevel(0, true);
             }
         }
 
@@ -154,5 +147,19 @@ int main() {
         }
 
         RccDriver::IWDG_Reload();
+    }
+}
+*/
+
+int main() {
+    __disable_irq();
+
+    hardware_init(app);   // Настройка всех драйверов и периферии
+    services_init(app);   // Инициализация сервисов более высокого уровня
+
+    __enable_irq();
+
+    while (true) {
+        app_loop(app);
     }
 }

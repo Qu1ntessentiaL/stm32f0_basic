@@ -1,9 +1,9 @@
 #pragma once
 
 #include "stm32f0xx.h"
+#include "RccDriver.hpp"
 #include "GpioDriver.hpp"
-#include "AppContext.hpp"
-#include "EventQueue.hpp"
+#include "Event.hpp"
 
 /**
  * @brief Кнопка с программным антидребезгом и детектором удержания.
@@ -25,7 +25,7 @@ public:
     };
 
     inline Event tick() {
-        const uint32_t now = GetMsTicks();
+        const uint32_t now = RccDriver::GetMsTicks();
         const bool rawPressed = !Read();
 
         if (rawPressed != m_rawState) {
@@ -97,7 +97,7 @@ private:
     Button<> btnS1, btnS2, btnS3, btnS4;
 
     void handle(Button<> &b, EventType type, uint32_t &lastR, EventQueue &queue) {
-        const auto now = GetMsTicks();
+        const auto now = RccDriver::GetMsTicks();
         auto e = b.tick();
 
         if (e == Button<>::Event::Pressed) {
@@ -117,7 +117,7 @@ private:
     void checkCombination(EventQueue &queue) {
         const bool s1 = !btnS1.Read();
         const bool s2 = !btnS2.Read();
-        const uint32_t now = GetMsTicks();
+        const uint32_t now = RccDriver::GetMsTicks();
 
         static uint32_t comboStart = 0;
 

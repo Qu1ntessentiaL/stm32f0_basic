@@ -3,8 +3,7 @@
 #include "stm32f0xx.h"
 #include "GpioDriver.hpp"
 
-template<uint32_t Baudrate = 115200,
-        uint16_t TxBuffSize = 256>
+template<uint32_t Baudrate = 115200, uint16_t TxBuffSize = 256>
 class UsartDriver {
     /**
      * @brief USART1 TX ring buffer

@@ -1,4 +1,4 @@
-#include "fw_info.h"
+#include "fw_info.hpp"
 
 #pragma message ("FW_GIT_TAG = " FW_GIT_TAG)
 #pragma message ("FW_GIT_HASH = " FW_GIT_HASH)

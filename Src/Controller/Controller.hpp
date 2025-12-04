@@ -1,10 +1,10 @@
 #pragma once
 
+#include "RccDriver.hpp"
 #include "GpioDriver.hpp"
-#include "ht1621.hpp"
 #include "TimDriver.hpp"
-#include "EventQueue.hpp"
-#include "AppContext.hpp"
+#include "ht1621.hpp"
+#include "Event.hpp"
 #include "PID.hpp"
 #include "BeepManager.hpp"
 
@@ -18,9 +18,9 @@
  */
 class Controller {
 public:
-    Controller(HT1621B *display, BeepManager *beepManager, PwmDriver *heater) :
+    Controller(HT1621B *display, BeepManager *beep, PwmDriver *heater) :
             m_display(display),
-            m_beep(beepManager),
+            m_beep(beep),
             m_heater(heater) {}
 
     /**
