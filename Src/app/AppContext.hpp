@@ -7,7 +7,7 @@
 #include "GpioDriver.hpp"
 #include "ht1621.hpp"
 #include "ds18b20.hpp"
-#include "Button.hpp"
+#include "ButtonsManager.hpp"
 #include "Controller.hpp"
 
 /**

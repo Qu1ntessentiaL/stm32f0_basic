@@ -1,9 +1,9 @@
+#include "stm32f0xx.h"
+
 #include "AppContext.hpp"
 #include "hardware_init.hpp"
 #include "services_init.hpp"
 #include "app_loop.hpp"
-
-#include "stm32f0xx.h"
 
 App app{};
 
