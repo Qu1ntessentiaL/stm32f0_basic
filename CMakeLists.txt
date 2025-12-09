@@ -56,29 +56,27 @@ set(ELF_FILE ${CMAKE_BINARY_DIR}/${PROJECT_NAME}.elf)
 set(DISASM_FILE ${CMAKE_BINARY_DIR}/${PROJECT_NAME}_disasm.s)
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E echo "Generating HEX and BIN files..."
+        COMMAND ${CMAKE_COMMAND} -E echo "Generating HEX, BIN, and disassembly files..."
 
-        # Переименовываем .elf (опционально, если нужно сохранить оригинальный файл)
-        COMMAND ${CMAKE_COMMAND} -E rename
-        $<TARGET_FILE:${PROJECT_NAME}>
-        $<TARGET_FILE_BASE_NAME:${PROJECT_NAME}>.elf
-
-        # Конвертируем ELF -> HEX (Intel HEX)
+        # HEX файл
         COMMAND arm-none-eabi-objcopy -O ihex
         $<TARGET_FILE:${PROJECT_NAME}>
         $<TARGET_FILE_BASE_NAME:${PROJECT_NAME}>.hex
 
-        # Конвертируем ELF -> BIN (Raw binary)
+        # BIN файл
         COMMAND arm-none-eabi-objcopy -O binary
         $<TARGET_FILE:${PROJECT_NAME}>
         $<TARGET_FILE_BASE_NAME:${PROJECT_NAME}>.bin
 
-        # Можно добавить вывод размера файла (опционально)
+        # Размер секций
         COMMAND arm-none-eabi-size $<TARGET_FILE:${PROJECT_NAME}>
 
-        COMMAND ${OBJDUMP} -d -S -M force-thumb -M reg-names-std ${ELF_FILE} > ${DISASM_FILE}
-        COMMENT "Disassembling ${PROJECT_NAME}.elf to ${PROJECT_NAME}_disasm.s"
-        DEPENDS ${PROJECT_NAME}.elf
+        # Дизассемблирование
+        COMMAND ${OBJDUMP} -d -S -M force-thumb -M reg-names-std
+        $<TARGET_FILE:${PROJECT_NAME}>
+        > $<TARGET_FILE_BASE_NAME:${PROJECT_NAME}>_disasm.s
+
+        COMMENT "Post-build: HEX, BIN, and disassembly"
         VERBATIM
 )
 

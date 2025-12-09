@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.15)
 set(STM32_FAMILY STM32F0)
 
 add_library(cmsis STATIC
-        Device/ST/${STM32_FAMILY}xx/Source/Templates/system_${STM32_FAMILY}xx.c
+        Device/ST/${STM32_FAMILY}xx/Source/Templates/system_stm32f0xx.c
 )
 
 target_include_directories(cmsis PUBLIC
