@@ -1,12 +1,22 @@
 cmake_minimum_required(VERSION 3.22)
 
+set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS TRUE CACHE BOOL "" FORCE)
 set(CMAKE_VERBOSE_MAKEFILE OFF CACHE BOOL "" FORCE)
 
-set(CMAKE_PROJECT_NAME stm32f0_basic)
-project(${CMAKE_PROJECT_NAME} LANGUAGES C CXX ASM)
+project(stm32f0_basic LANGUAGES C CXX ASM)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
+
+# Отключаем установку для embedded
+set(CMAKE_EXPORT_NO_PACKAGE_REGISTRY TRUE)
+set(CMAKE_SKIP_INSTALL_ALL_DEPENDENCY TRUE)
+set(CMAKE_SKIP_INSTALL_RULES TRUE)
+
+# Явно указываем пути установки для ETL
+set(CMAKE_INSTALL_LIBDIR "lib" CACHE STRING "" FORCE)
+set(CMAKE_INSTALL_INCLUDEDIR "include" CACHE STRING "" FORCE)
+set(CMAKE_INSTALL_BINDIR "bin" CACHE STRING "" FORCE)
 
 # set(USE_HAL_DRIVER_FLAG ON CACHE INTERNAL "Flag indicating HAL driver is used")
 # set(HAL_CONF_H_DIR ${CMAKE_SOURCE_DIR}/Src/)
@@ -19,14 +29,24 @@ add_executable(${PROJECT_NAME}
 
 include(Src/src.cmake)
 
-add_subdirectory(Drivers/CMSIS)
-# add_subdirectory(Drivers/os)
+add_subdirectory(Libraries/CMSIS)
+
+set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(NO_STL ON CACHE BOOL "" FORCE)  # Важно для embedded!
+add_subdirectory(Libraries/etl EXCLUDE_FROM_ALL)
+
+# add_subdirectory(Libraries/os)
 
 # stm32f1xx_hal_driver заменить на cmsis, если нет надобности в HAL
 target_link_libraries(${PROJECT_NAME} PRIVATE
         cmsis
+        etl::etl
         # chibios-nano
 )
+
+# target_compile_options(${PROJECT_NAME} PRIVATE
+#         -include "${CMAKE_SOURCE_DIR}/Src/etl_config.h"
+# )
 
 execute_process(
         COMMAND git tag --points-at HEAD
@@ -48,7 +68,9 @@ add_compile_definitions(
 message(STATUS "FW_GIT_TAG = [${GIT_TAG}]")
 message(STATUS "GIT_HASH   = [${GIT_HASH}]")
 
-# Найти objdump в PATH
+# Найти утилиты
+find_program(OBJCOPY arm-none-eabi-objcopy REQUIRED)
+find_program(SIZE arm-none-eabi-size REQUIRED)
 find_program(OBJDUMP arm-none-eabi-objdump REQUIRED)
 
 # Путь к elf-файлу (предполагается, что имя target — firmware.elf)
