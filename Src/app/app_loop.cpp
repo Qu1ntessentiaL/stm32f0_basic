@@ -7,7 +7,6 @@
 void app_loop(App &app) {
     // Low-level polling
     app.sensor->poll();
-    app.uart->poll_tx();
     app.buttons->poll(*app.queue);
     app.ctrl->poll();
     app.beep->poll();

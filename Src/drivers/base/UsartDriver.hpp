@@ -1,25 +1,34 @@
 #pragma once
 
+#include <etl/circular_buffer.h>
+#include <etl/string.h>
+
 #include "stm32f0xx.h"
 #include "GpioDriver.hpp"
 
-template<uint32_t Baudrate = 115200, uint16_t TxBuffSize = 256>
+/**
+ * @brief Драйвер USART с неблокирующей передачей через кольцевой буфер
+ * @tparam Baudrate Скорость передачи (по умолчанию 115200)
+ * @tparam TxBuffSize Размер кольцевого буфера для передачи
+ */
+template<uint32_t Baudrate = 115200, size_t TxBuffSize = 256>
 class UsartDriver {
-    /**
-     * @brief USART1 TX ring buffer
-     */
-    uint8_t tx_head = 0;               ///< write index - points to next free slot
-    uint8_t tx_tail = 0;               ///< read index - points to the oldest data
-    uint8_t tx_buf[TxBuffSize] = {};   ///< circular buffer for UART transmission
+    etl::circular_buffer<uint8_t, TxBuffSize> m_tx_buf; ///< Кольцевой буфер для передачи
 
-    static inline void EnableClock() {
+    /**
+     * @brief Включает тактирование USART1
+     */
+    static void EnableClock() {
         if (!(RCC->APB2ENR & RCC_APB2ENR_USART1EN)) {
             RCC->APB2ENR |= RCC_APB2ENR_USART1EN;
             __DSB();
         }
     }
 
-    static inline void DisableClock() {
+    /**
+     * @brief Выключает тактирование USART1
+     */
+    static void DisableClock() {
         if (RCC->APB2ENR & RCC_APB2ENR_USART1EN) {
             RCC->APB2ENR &= ~RCC_APB2ENR_USART1EN;
             __DSB();
@@ -27,26 +36,26 @@ class UsartDriver {
     }
 
     /**
-     * @brief Non-blocking function to enqueue a single byte into the UART transmit buffer
-     * @param[in] b Byte to enqueue
-     * @return 1 on success, 0 if buffer full
-     * @note Returns immediately without blocking
+     * @brief Неблокирующая запись одного байта в буфер передачи
+     * @param byte Байта для записи
+     * @return true, если запись успешна, false если буфер полон
+     * @note Включает прерывание TXE при успешной записи
      */
-    inline int tx_enqueue_byte(uint8_t b) {
-        uint8_t head = tx_head;
-        // Calculate next head position with wrap-around using power-of-two mask
-        uint8_t next = (uint8_t) ((head + 1U) & (TxBuffSize - 1U));
-        if (next == tx_tail) { // Check if buffer is full
-            return 0; // Buffer full - non-blocking return
+    bool tx_enqueue_byte(uint8_t byte) {
+        if (m_tx_buf.full()) {
+            return false;
         }
-
-        tx_buf[head] = b; // Store byte at current head position
-        tx_head = next;   // Atomically update head pointer
-        return 1; // Success
+        m_tx_buf.push(byte);
+        USART1->CR1 |= USART_CR1_TXEIE;
+        return true;
     }
 
 public:
-    static inline void Init(uint32_t apb_clk_hz) {
+    /**
+     * @brief Инициализация USART1 и GPIO
+     * @param apb_clk_hz Частота шины APB (Гц)
+     */
+    static void Init(uint32_t apb_clk_hz) {
         GpioDriver rx(GPIOA, 10);
         GpioDriver tx(GPIOA, 9);
 
@@ -64,73 +73,88 @@ public:
         USART1->BRR = (apb_clk_hz + Baudrate / 2) / Baudrate;
         USART1->CR1 = USART_CR1_RE | USART_CR1_TE;
         USART1->CR2 = 0;
-        USART1->CR1 |= USART_CR1_UE; // Enable USART
+        USART1->CR1 |= USART_CR1_UE; // Включение USART
 
-        //USART()->CR1 |= USART_CR1_RXNEIE;
-        //NVIC_EnableIRQ(USART1_IRQn);
+        NVIC_EnableIRQ(USART1_IRQn);
     }
 
     /**
-     * @brief Non-blocking function to enqueue entire null-terminated string into UART transmit buffer
-     * @param[in] s Null-terminated string to enqueue
-     * @return Number of characters successfully enqueued
+     * @brief Неблокирующая запись C-style строки в буфер передачи
+     * @param s Указатель на нуль-терминированную строку
+     * @return Количество успешно записанных символов
      */
-    inline int write_str(const char *s) {
-        const char *start = s;
-        // Process each character until null terminator
-        while (*s) {
-            // Try to enqueue current character, break on buffer full (non-blocking)
-            if (!tx_enqueue_byte((uint8_t) *s)) break;
+    int write_str(const char *s) {
+        int count = 0;
+        while (*s && tx_enqueue_byte(static_cast<uint8_t>(*s))) {
             s++;
+            count++;
         }
-        // Return count of successfully enqueued characters
-        return (int) (s - start);
+        return count;
     }
 
     /**
-     * @brief Non-blocking function to advance UART transmission by at most one byte
-     * @note Must be called periodically to feed UART hardware from buffer
-     * @note Returns immediately without blocking
+     * @brief Неблокирующая запись etl::string в буфер передачи
+     * @tparam N Максимальный размер строки etl::string
+     * @param s Строка для передачи
+     * @return Количество успешно записанных символов
      */
-    inline void poll_tx() {
-        // Check if UART is ready to transmit (TXE flag set) and buffer not empty
-        if ((USART1->ISR & USART_ISR_TXE) && (tx_tail != tx_head)) {
-            // Get byte from buffer at tail position
-            uint8_t b = tx_buf[tx_tail];
-            // Advance tail pointer with wrap-around
-            tx_tail = (uint8_t) ((tx_tail + 1U) & (TxBuffSize - 1U));
-            // Write byte to UART data register for transmission
-            USART1->TDR = b;
+    template<size_t N>
+    int write_str(const etl::string<N> &s) {
+        int count = 0;
+        for (auto c : s) {
+            if (!tx_enqueue_byte(static_cast<uint8_t>(c))) break;
+            count++;
         }
+        return count;
     }
 
     /**
-     * @brief Convert integer to string and enqueue for UART transmission
-     * @param[in] value Integer value to convert and transmit
+     * @brief Конвертирует целое число в строку и записывает в буфер передачи
+     * @param value Целое число для передачи
      */
-    inline void write_int(int value) {
-        char buf[7];       // enough for -32768 and '\0'
-        char *p = buf + sizeof(buf) - 1;
-        *p = '\0';
+    void write_int(int value) {
+        etl::string<7> buf;
+        buf.clear();
 
-        if (value == 0) {  // Special case for zero
-            *(--p) = '0';
+        if (value == 0) {
+            buf.push_back('0');
         } else {
             int is_negative = 0;
             unsigned int uvalue = value;
-
-            if (value < 0) {  // Handle negative numbers
+            if (value < 0) {
                 is_negative = 1;
                 uvalue = -value;
             }
 
-            do {  // Convert digits from least significant to most significant
-                *(--p) = '0' + (uvalue % 10);
+            etl::string<7> tmp;
+            while (uvalue) {
+                tmp.push_back('0' + (uvalue % 10));
                 uvalue /= 10;
-            } while (uvalue);
+            }
 
-            if (is_negative) *(--p) = '-'; // Add negative sign if needed
+            if (is_negative) tmp.push_back('-');
+
+            for (int i = tmp.size() - 1; i >= 0; --i) {
+                buf.push_back(tmp[i]);
+            }
         }
-        (void) write_str(p); // Best-effort enqueue to UART buffer
+
+        write_str(buf);
+    }
+
+    /**
+     * @brief Обработчик прерывания USART1
+     * @note Должен вызываться из ISR (например, USART1_IRQHandler)
+     * @note Передача байтов из кольцевого буфера осуществляется здесь
+     */
+    void handleIRQ() {
+        if (USART1->ISR & USART_ISR_TXE && !m_tx_buf.empty()) {
+            USART1->TDR = m_tx_buf.front();
+            m_tx_buf.pop();
+        }
+
+        if (m_tx_buf.empty()) {
+            USART1->CR1 &= ~USART_CR1_TXEIE;
+        }
     }
 };

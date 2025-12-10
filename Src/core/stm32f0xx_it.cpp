@@ -20,7 +20,11 @@ void EXTI2_3_IRQHandler(void) {}
 
 void EXTI4_15_IRQHandler(void) {}
 
-void USART1_IRQHandler(void) {}
+void USART1_IRQHandler(void) {
+    if (app.uart) {
+        app.uart->handleIRQ();
+    }
+}
 
 void TIM17_IRQHandler(void) {
     if (app.tim17) {
