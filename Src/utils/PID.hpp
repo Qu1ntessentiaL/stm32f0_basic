@@ -104,7 +104,7 @@ public:
         }
 
         // Интегральная часть
-        int32_t baseDt = static_cast<int32_t>(m_sampleTimeMs ? m_sampleTimeMs : 1U);
+        auto baseDt = static_cast<int32_t>(m_sampleTimeMs ? m_sampleTimeMs : 1U);
         int64_t integralIncrement = (int64_t) error * (int64_t) dt_ms;
         integralIncrement /= baseDt;
         m_integral += static_cast<int32_t>(integralIncrement);
@@ -113,8 +113,8 @@ public:
         // Производная часть
         int32_t derivative = 0;
         if (m_hasPrev) {
-            int64_t delta = (int64_t) (error - m_prevError) * baseDt;
-            derivative = static_cast<int32_t>(delta / (int64_t) dt_ms);
+            auto delta = static_cast<int64_t>(error - m_prevError) * baseDt;
+            derivative = static_cast<int32_t>(delta / static_cast<int64_t>(dt_ms));
         } else {
             m_hasPrev = true;
         }
@@ -156,7 +156,7 @@ public:
         uart_write_str("\r\n");
 #endif
 
-        return (int32_t) out;
+        return static_cast<int32_t>(out);
     }
 
     void setSampleTimeMs(uint32_t sampleTimeMs) {

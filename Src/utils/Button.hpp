@@ -24,7 +24,7 @@ public:
         None, Pressed, Released, Held
     };
 
-    inline Event tick() {
+    Event tick() {
         const uint32_t now = RccDriver::GetMsTicks();
         const bool rawPressed = !Read();
 
@@ -56,11 +56,11 @@ public:
     }
 
 private:
-    static inline bool timeReached(uint32_t now, uint32_t deadline) {
+    static bool timeReached(uint32_t now, uint32_t deadline) {
         return static_cast<int32_t>(now - deadline) >= 0;
     }
 
-    static inline bool hasElapsed(uint32_t now, uint32_t since, uint32_t duration) {
+    static bool hasElapsed(uint32_t now, uint32_t since, uint32_t duration) {
         return static_cast<uint32_t>(now - since) >= duration;
     }
 

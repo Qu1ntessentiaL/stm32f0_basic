@@ -27,7 +27,7 @@ public:
               m_pin_mask(1U << pin),
               m_pin_pos(pin * 2) {}
 
-    inline void Init(Mode mode,
+    void Init(Mode mode,
                      OutType type = OutType::OpenDrain,
                      Pull pull = Pull::None,
                      Speed speed = Speed::Low) const {
@@ -43,15 +43,15 @@ public:
                           (static_cast<uint32_t>(speed) << m_pin_pos);
     }
 
-    inline void Set() const { m_port->BSRR = m_pin_mask; }
+    void Set() const { m_port->BSRR = m_pin_mask; }
 
-    inline void Reset() const { m_port->BRR = m_pin_mask; }
+    void Reset() const { m_port->BRR = m_pin_mask; }
 
-    inline void Toggle() const { m_port->ODR ^= m_pin_mask; }
+    void Toggle() const { m_port->ODR ^= m_pin_mask; }
 
-    inline bool Read() const { return (m_port->IDR & m_pin_mask) != 0; }
+    bool Read() const { return (m_port->IDR & m_pin_mask) != 0; }
 
-    inline void SetAlternateFunction(uint8_t af) const {
+    void SetAlternateFunction(uint8_t af) const {
         EnableClock();
 
         m_port->MODER = (m_port->MODER & ~(0b11 << m_pin_pos)) | (0b10 << m_pin_pos);
@@ -67,7 +67,7 @@ public:
     }
 
 private:
-    inline void EnableClock() const {
+    void EnableClock() const {
         if (m_port == GPIOA) RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
         else if (m_port == GPIOB) RCC->AHBENR |= RCC_AHBENR_GPIOBEN;
         else if (m_port == GPIOC) RCC->AHBENR |= RCC_AHBENR_GPIOCEN;
