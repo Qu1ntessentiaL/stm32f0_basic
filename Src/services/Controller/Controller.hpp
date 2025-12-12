@@ -1,7 +1,5 @@
 #pragma once
 
-#include "RccDriver.hpp"
-#include "GpioDriver.hpp"
 #include "TimDriver.hpp"
 #include "ht1621.hpp"
 #include "Event.hpp"
