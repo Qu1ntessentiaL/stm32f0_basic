@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       # 🧰 Устанавливаем актуальный ARM GCC Toolchain
       - name: Install latest ARM GCC Toolchain
@@ -30,7 +32,7 @@ jobs:
           path: |
             build/Debug
             build/Release
-          key: "${{ runner.os }}_stm32_${{ hashFiles('**/CMakeLists.txt', '**/CMakePresets.json') }}"
+          key: "${{ runner.os }}_stm32_${{ hashFiles('**/CMakeLists.txt', '**/CMakePresets.json', '.gitmodules') }}"
           restore-keys: |
             ${{ runner.os }}_stm32_
 
