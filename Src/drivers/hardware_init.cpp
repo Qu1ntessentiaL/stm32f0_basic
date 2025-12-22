@@ -13,6 +13,11 @@ void hardware_init(App& app) {
     uart1.Init(SystemCoreClock);
     app.uart = &uart1;
 
+    // I2C1
+    static TwiDriver i2c1;
+    i2c1.init(SystemCoreClock, 100'000);
+    app.twi = &i2c1;
+
     // TIM17
     static TimDriver tim17(TIM17);
     tim17.Init(47, 999);

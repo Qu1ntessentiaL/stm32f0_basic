@@ -12,7 +12,7 @@
  * @tparam TxBuffSize Размер кольцевого буфера для передачи
  * @tparam RxBuffSize Размер кольцевого буфера для приема
  */
-template<uint32_t Baudrate = 115200, size_t TxBuffSize = 256, size_t RxBuffSize = 256>
+template<uint32_t Baudrate = 115200, size_t TxBuffSize = 64, size_t RxBuffSize = 32>
 class UsartDriver {
     etl::circular_buffer<uint8_t, TxBuffSize> m_tx_buf; ///< Кольцевой буфер для передачи
     etl::circular_buffer<uint8_t, RxBuffSize> m_rx_buf; ///< Кольцевой буфер для приема

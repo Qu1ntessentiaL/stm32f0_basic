@@ -1,6 +1,7 @@
 #pragma once
 
 #include "UsartDriver.hpp"
+#include "TwiDriver.hpp"
 #include "TimDriver.hpp"
 #include "GpioDriver.hpp"
 #include "ht1621.hpp"
@@ -14,6 +15,7 @@
 struct App {
     // Hardware-level (низкоуровневые драйверы)
     UsartDriver<>   *uart = nullptr;
+    TwiDriver       *twi = nullptr;
     TimDriver       *tim17 = nullptr;
     DS18B20         *sensor = nullptr;
     HT1621B         *display = nullptr;
