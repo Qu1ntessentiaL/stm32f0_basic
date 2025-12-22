@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cstdint>
-
 #include "UsartDriver.hpp"
 #include "TimDriver.hpp"
 #include "GpioDriver.hpp"
