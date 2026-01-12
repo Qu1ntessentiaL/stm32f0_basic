@@ -12,6 +12,7 @@ void HardFault_Handler(void) { while (1) {}}
 
 void SysTick_Handler(void) {
     ++RccDriver::g_msTicks;
+    TwiDriver::tick_1ms();
 }
 
 void EXTI0_1_IRQHandler(void) {}
