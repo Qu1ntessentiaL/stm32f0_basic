@@ -55,15 +55,28 @@ void HT1621B::WriteBit(uint8_t bit) {
     __NOP();
     __NOP();
     __NOP();
+    __NOP();
+    __NOP();
     m_write_pin.Reset();
     __NOP();
     __NOP();
+    __NOP();
+    __NOP();
+    __NOP();
     m_write_pin.Set();
+    __NOP();
+    __NOP();
+    __NOP();
 }
 
 void HT1621B::WriteCommand(Commands cmd) {
     uint8_t cmd_v = cmd;
+    m_cs_pin.Set();  // Убедимся, что CS в HIGH
+    __NOP();
+    __NOP();
     m_cs_pin.Reset();
+    __NOP();
+    __NOP();
     WriteBit(1);
     WriteBit(0);
     WriteBit(0);
@@ -75,13 +88,22 @@ void HT1621B::WriteCommand(Commands cmd) {
         cmd_v <<= 1;
     }
     WriteBit(0);
+    __NOP();
+    __NOP();
     m_cs_pin.Set();
+    __NOP();
+    __NOP();
 }
 
 void HT1621B::WriteData(uint8_t address, uint8_t data) {
     if (address >= 32) return;
 
+    m_cs_pin.Set();  // Убедимся, что CS в HIGH
+    __NOP();
+    __NOP();
     m_cs_pin.Reset();
+    __NOP();
+    __NOP();
 
     WriteBit(1);
     WriteBit(0);
@@ -101,7 +123,11 @@ void HT1621B::WriteData(uint8_t address, uint8_t data) {
         data >>= 1;
     }
 
+    __NOP();
+    __NOP();
     m_cs_pin.Set();
+    __NOP();
+    __NOP();
 }
 
 /**
@@ -150,10 +176,25 @@ void HT1621B::ClearSegArea(bool flushNow) {
 }
 
 void HT1621B::Init() {
+    // Выбираем внутренний генератор 256 КГц
+    WriteCommand(Commands::RC256K);
+    for (volatile int i = 0; i < 1000; i++) __NOP();
+    
+    // Выбираем режим работы: 4-коммутирующий режим, bias 1/3
     WriteCommand(Commands::Bias12);
+    for (volatile int i = 0; i < 1000; i++) __NOP();
+    
+    // Включаем систему
     WriteCommand(Commands::SysEn);
+    for (volatile int i = 0; i < 1000; i++) __NOP();
+    
+    // Включаем LCD
     WriteCommand(Commands::LcdOn);
+    for (volatile int i = 0; i < 1000; i++) __NOP();
+    
+    // Очищаем дисплей
     FullClear(true);
+    for (volatile int i = 0; i < 1000; i++) __NOP();
 }
 
 void HT1621B::ShowDot(uint8_t position, bool enable, bool flushNow) {
@@ -181,10 +222,10 @@ void HT1621B::ShowDigit(uint8_t position, uint8_t digit, bool withDot, bool flus
 
     const uint8_t base = (5 - position) * 4;
 
-    // Отрисовка цифры
+    // Отрисовка цифры - используем Replace режим для корректной перезаписи
     for (const auto &seg: m_digits[digit]) {
         if (seg.addr == 0) break;
-        SetData(seg.addr + base, seg.val, seg.addr == 3 ? WriteMode::SetBit : WriteMode::Replace);
+        SetData(seg.addr + base, seg.val, WriteMode::Replace);
     }
 
     // Добавляем точку, если нужно
