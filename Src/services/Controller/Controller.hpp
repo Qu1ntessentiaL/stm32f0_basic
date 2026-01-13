@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config.h"
 #include "TimDriver.hpp"
 #include "ht1621.hpp"
 #include "Event.hpp"
@@ -102,7 +103,7 @@ private:
     /// Таблица переходов конечного автомата (определена в .cpp).
     static const Transition transitions[];
 
-    int m_setpoint = 400;                       ///< Уставка, задаваемая пользователем (в десятых долях °C, 250 = 25.0°C).
+    int m_setpoint = CONTROLLER_SETPOINT_DEFAULT;               ///< Уставка, задаваемая пользователем (в десятых долях °C, 250 = 25.0°C).
     int m_current = 0;                          ///< Текущая измеренная температура (в десятых долях °C).
     State m_state = State::Idle;                ///< Состояние автомата.
     bool m_showingSetpoint = false;             ///< Отображается ли сейчас уставка `t2`.
@@ -110,12 +111,12 @@ private:
     int m_heaterPower = 0;                      ///< Последнее вычисленное значение мощности (0..1000).
     uint32_t m_lastPidTimestamp = 0;            ///< Время последнего обновления PID (мс).
 
-    static constexpr uint32_t SetpointDisplayDurationMs = 3000; ///< Время показа `t2` после нажатия (мс).
+    static constexpr uint32_t SetpointDisplayDurationMs = CONTROLLER_SETPOINT_DISPLAY_DURATION_MS; ///< Время показа `t2` после нажатия (мс).
     static constexpr int SetpointStep = 5;                      ///< Шаг изменения уставки (в десятых долях °C, 5 = 0.5°C).
-    static constexpr int SetpointMin = -95;                     ///< Минимально допустимая уставка (в десятых долях °C, -95 = -9.5°C).
-    static constexpr int SetpointMax = 995;                     ///< Максимально допустимая уставка (в десятых долях °C, 995 = 99.5°C).
-    static constexpr int ErrorDelta = 30;                       ///< Перегрев относительно цели (в десятых долях °C, 30 = 3.0°C).
-    static constexpr uint32_t PidNominalSamplePeriodMs = 1000;  ///< Базовый период дискретизации PID.
+    static constexpr int SetpointMin = CONTROLLER_SETPOINT_MIN;                     ///< Минимально допустимая уставка (в десятых долях °C, -95 = -9.5°C).
+    static constexpr int SetpointMax = CONTROLLER_SETPOINT_MAX;                     ///< Максимально допустимая уставка (в десятых долях °C, 995 = 99.5°C).
+    static constexpr int ErrorDelta = CONTROLLER_ERROR_DELTA;                       ///< Перегрев относительно цели (в десятых долях °C, 30 = 3.0°C).
+    static constexpr uint32_t PidNominalSamplePeriodMs = CONTROLLER_PID_SAMPLE_PERIOD_MS;  ///< Базовый период дискретизации PID.
     static constexpr int PidDeadband = 1;                       ///< Мёртвая зона PID (0.2°C).
 
     bool m_s1Held = false, m_s2Held = false;
@@ -129,13 +130,13 @@ private:
      * что обеспечивает высокую скорость работы на MCU без FPU.
      */
     PIDInt m_pid = PIDInt(
-            40000,       ///< Kp
-            500,         ///< Ki
-            300,           ///< Kd
-            0,           ///< Минимальная мощность
-            1000,        ///< Максимальная мощность (100% PWM)
-            -2000,
-            2000,
+            CONTROLLER_PID::KP,       ///< Kp
+            CONTROLLER_PID::KI,         ///< Ki
+            CONTROLLER_PID::KD,           ///< Kd
+            CONTROLLER_PID_OUT_MIN,           ///< Минимальная мощность
+            CONTROLLER_PID_OUT_MAX,        ///< Максимальная мощность (100% PWM)
+            CONTROLLER_PID_INTEGR_MIN,
+            CONTROLLER_PID_INTEGR_MAX,
             PidNominalSamplePeriodMs,
             PidDeadband
     );

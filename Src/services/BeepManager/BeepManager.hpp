@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include "config.h"
 #include "TimDriver.hpp"
 #include "RccDriver.hpp"
 
@@ -11,12 +12,12 @@ public:
     explicit BeepManager(PwmDriver *driver)
             : m_driver(driver) {}
 
-    void requestBeep(uint16_t freq = 3000, uint16_t duration = 50) {
+    void requestBeep(uint16_t freq = BEEP_FREQUENCY_HZ, uint16_t duration = BEEP_DURATION_MS) {
         m_freq = freq;
         m_active = true;
 
         // включаем звук
-        m_driver->setPower(500);   // duty
+        m_driver->setPower(BEEP_POWER_PERCENT);   // duty
         m_driver->setFrequency(freq);
 
         m_endTime = GetMsTicks() + duration;

@@ -1,6 +1,7 @@
 #include "app_loop.hpp"
 #include "event_dispatcher.hpp"
 #include "RccDriver.hpp"
+#include "config.h"
 
 #include "AppContext.hpp"
 
@@ -58,9 +59,9 @@ void app_loop(App &app) {
                 // Отправляем press сразу
                 app.queue->push(evt_press);
 
-                // Планируем release через 50 мс (или заменяем предыдущий отложенный)
+                // Планируем release (или заменяем предыдущий отложенный)
                 pending_uart_release = evt_release;
-                pending_uart_release_deadline = RccDriver::GetMsTicks() + 50;
+                pending_uart_release_deadline = RccDriver::GetMsTicks() + UART_BUTTON_PRESS_DURATION_MS;
             }
         }
     }
@@ -70,7 +71,7 @@ void app_loop(App &app) {
         app.tim17->decIrqCount();
 
         static uint8_t tick100 = 0;
-        if (++tick100 >= 100) {
+        if (++tick100 >= APP_LOOP_TICKS_PER_100MS) {
             tick100 = 0;
             app.queue->push({EventType::Tick100ms, 0});
         }

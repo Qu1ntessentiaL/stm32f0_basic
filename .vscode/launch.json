@@ -1,0 +1,20 @@
+{
+  "configurations": [
+    {
+      "name": "Debug (OpenOCD)",
+      "type": "cortex-debug",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/build/Debug/stm32f0_basic.elf",
+      "servertype": "openocd",
+      "configFiles": [
+        "${workspaceFolder}/stm32f0.cfg"
+      ],
+      "runToEntryPoint": "main",
+      "gdbPath": "${config:armToolchainPath}/arm-none-eabi-gdb",
+      "device": "STM32F030K6Tx",
+      "svdFile": "${workspaceFolder}/STM32F0x0.svd",
+      "preLaunchTask": "Build Debug"
+    }
+  ]
+}

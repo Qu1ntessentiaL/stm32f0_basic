@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config.h"
 #include <etl/circular_buffer.h>
 #include <etl/optional.h>
 #include <cstdint>
@@ -27,7 +28,7 @@ struct Event {
 
 class EventQueue {
 public:
-    static constexpr size_t MaxEvents = 16;
+    static constexpr size_t MaxEvents = EVENT_QUEUE_MAX_SIZE;
 
     bool push(const Event &ev) {
         if (m_queue.full()) {

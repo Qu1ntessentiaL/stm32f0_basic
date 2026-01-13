@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config.h"
 #include "Button.hpp"
 #include "Event.hpp"
 
@@ -24,7 +25,7 @@ public:
     }
 
 private:
-    static constexpr uint32_t DoubleClickGap = 250; // мс
+    static constexpr uint32_t DoubleClickGap = BUTTONS_DOUBLE_CLICK_GAP_MS; // мс
     uint32_t lastRelease[4] = {0, 0, 0, 0};
 
     Button<> btnS1, btnS2, btnS3, btnS4;
@@ -57,12 +58,12 @@ private:
         if (s1 && s2) {
             if (comboStart == 0) comboStart = now;
 
-            if (now - comboStart > 400) { // long combo
+            if (now - comboStart > BUTTONS_COMBO_LONG_THRESHOLD_MS) { // long combo
                 queue.push({EventType::ButtonS1, 10}); // combo long
                 comboStart = 0;
             }
         } else {
-            if (comboStart != 0 && (now - comboStart < 400)) {
+            if (comboStart != 0 && (now - comboStart < BUTTONS_COMBO_LONG_THRESHOLD_MS)) {
                 queue.push({EventType::ButtonS1, 9}); // short combo
             }
             comboStart = 0;

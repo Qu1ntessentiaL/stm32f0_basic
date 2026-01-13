@@ -1,4 +1,5 @@
 #include "Controller.hpp"
+#include "config.h"
 
 using namespace RccDriver;
 

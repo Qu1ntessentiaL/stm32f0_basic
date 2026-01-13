@@ -1,3 +1,4 @@
+#include "config.h"
 #include "hardware_init.hpp"
 #include "AppContext.hpp"
 
@@ -6,7 +7,7 @@ using namespace RccDriver;
 void hardware_init(App& app) {
     InitMax48MHz();
     IWDG_Init();
-    SysTick_Config(SystemCoreClock / 1000);
+    SysTick_Config(SYSTEM_CLOCK_HZ / 1000);
 
     // UART1
     static UsartDriver<> uart1;
@@ -15,12 +16,12 @@ void hardware_init(App& app) {
 
     // I2C1
     static TwiDriver i2c1;
-    i2c1.init(SystemCoreClock, 100'000);
+    i2c1.init(PCLK1_HZ, I2C_SPEED_HZ);
     app.twi = &i2c1;
 
     // TIM17
     static TimDriver tim17(TIM17);
-    tim17.Init(47, 999);
+    tim17.Init(TIM17_PRESCALER, TIM17_ARR);
     tim17.Start();
     app.tim17 = &tim17;
 
@@ -82,12 +83,12 @@ void hardware_init(App& app) {
 
     // PWM-driver for heater
     static PwmDriver heater(TIM3, 1);
-    heater.Init(47, 999);
+    heater.Init(HEATER_PRESCALER, HEATER_ARR);
     app.heater = &heater;
 
     // PWM-driver for buzzer
     static PwmDriver piezo(TIM14, 1);
-    piezo.Init(47, 499);
+    piezo.Init(PIEZO_PRESCALER, PIEZO_ARR);
     app.piezo = &piezo;
 
     // Buttons
