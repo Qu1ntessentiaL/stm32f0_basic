@@ -8,6 +8,7 @@
 #include "ds18b20.hpp"
 #include "ButtonsManager.hpp"
 #include "Controller.hpp"
+#include "Event.hpp"
 
 /**
  *   Контекст приложения (Dependency Injection Container)

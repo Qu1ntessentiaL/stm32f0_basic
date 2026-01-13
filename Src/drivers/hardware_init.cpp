@@ -97,4 +97,8 @@ void hardware_init(App& app) {
                                GPIOA, 3,
                                GPIOA, 4);
     app.buttons = &btns;
+
+    // EventQueue (critical for app_loop - must be initialized here)
+    static EventQueue queue;
+    app.queue = &queue;
 }

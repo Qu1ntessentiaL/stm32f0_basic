@@ -11,9 +11,10 @@ int main() {
     __disable_irq();
 
     hardware_init(app);   // Настройка всех драйверов и периферии
-    services_init(app);   // Инициализация сервисов более высокого уровня
 
-    __enable_irq();
+    __enable_irq();          // Включаем прерывания перед services_init (нужны для UART TX)
+
+    services_init(app);   // Инициализация сервисов более высокого уровня
 
     while (true) {
         app_loop(app);

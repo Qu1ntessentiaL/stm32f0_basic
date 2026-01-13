@@ -26,8 +26,7 @@ void print_fw_info(UsartDriver<> *uart) {
 }
 
 void services_init(App &app) {
-    static EventQueue queue;
-    app.queue = &queue;
+    // EventQueue already initialized in hardware_init
 
     static BeepManager beep(app.piezo);
     app.beep = &beep;
@@ -36,5 +35,7 @@ void services_init(App &app) {
     app.ctrl = &ctrl;
 
     print_fw_info(app.uart);
+    app.uart->flush();  // Wait for all TX data to be sent before continuing
+    
     app.uart->write_str("System ready.\r\n");
 }
