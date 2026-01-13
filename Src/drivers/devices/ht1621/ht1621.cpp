@@ -178,23 +178,23 @@ void HT1621B::ClearSegArea(bool flushNow) {
 void HT1621B::Init() {
     // Выбираем внутренний генератор 256 КГц
     WriteCommand(Commands::RC256K);
-    for (volatile int i = 0; i < 1000; i++) __NOP();
+    for (int i = 0; i < 1000; i++) __NOP();
     
     // Выбираем режим работы: 4-коммутирующий режим, bias 1/3
     WriteCommand(Commands::Bias12);
-    for (volatile int i = 0; i < 1000; i++) __NOP();
+    for (int i = 0; i < 1000; i++) __NOP();
     
     // Включаем систему
     WriteCommand(Commands::SysEn);
-    for (volatile int i = 0; i < 1000; i++) __NOP();
+    for (int i = 0; i < 1000; i++) __NOP();
     
     // Включаем LCD
     WriteCommand(Commands::LcdOn);
-    for (volatile int i = 0; i < 1000; i++) __NOP();
+    for (int i = 0; i < 1000; i++) __NOP();
     
     // Очищаем дисплей
     FullClear(true);
-    for (volatile int i = 0; i < 1000; i++) __NOP();
+    for (int i = 0; i < 1000; i++) __NOP();
 }
 
 void HT1621B::ShowDot(uint8_t position, bool enable, bool flushNow) {
