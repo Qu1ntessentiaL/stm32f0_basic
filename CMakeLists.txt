@@ -73,6 +73,17 @@ if (NO_STL)
     )
 endif ()
 
+# ============
+# Link options
+# ============
+
+# Отключаем стандартные конструкторы
+# target_link_options(stm32f0_basic
+#     PRIVATE
+#         -nostartfiles
+#         -Wl,--undefined=main
+# )
+
 # =================
 # Add firmware info
 # =================

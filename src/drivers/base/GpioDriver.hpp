@@ -47,7 +47,10 @@ public:
 
     void Reset() const { m_port->BRR = m_pin_mask; }
 
-    void Toggle() const { m_port->ODR ^= m_pin_mask; }
+    void Toggle() const {
+        if (Read()) Reset();
+        else Set();
+    }
 
     bool Read() const { return (m_port->IDR & m_pin_mask) != 0; }
 
