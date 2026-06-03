@@ -12,9 +12,9 @@ function(add_stm32_hal)
     # We provide:
     # 1) one-time seeding from CubeMX (if dst doesn't exist),
     # 2) a manual sync target to refresh it on demand after CubeMX regen.
-    set(HAL_CONF_SRC ${CMAKE_SOURCE_DIR}/cube/Core/Inc/stm32h7xx_hal_conf.h)
+    set(HAL_CONF_SRC ${CMAKE_SOURCE_DIR}/cube/Core/Inc/stm32f0xx_hal_conf.h)
     set(HAL_CONF_DST_DIR ${CMAKE_SOURCE_DIR}/third_party/config/HAL)
-    set(HAL_CONF_DST ${HAL_CONF_DST_DIR}/stm32h7xx_hal_conf.h)
+    set(HAL_CONF_DST ${HAL_CONF_DST_DIR}/stm32f0xx_hal_conf.h)
     if (EXISTS ${HAL_CONF_SRC} AND NOT EXISTS ${HAL_CONF_DST})
         file(MAKE_DIRECTORY ${HAL_CONF_DST_DIR})
         configure_file(${HAL_CONF_SRC} ${HAL_CONF_DST} COPYONLY)
@@ -26,13 +26,13 @@ function(add_stm32_hal)
             COMMAND ${CMAKE_COMMAND} -E make_directory ${HAL_CONF_DST_DIR}
             COMMAND ${CMAKE_COMMAND} -E copy_if_different ${HAL_CONF_SRC} ${HAL_CONF_DST}
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            COMMENT "Sync HAL config: cube/Core/Inc/stm32h7xx_hal_conf.h -> third_party/config/HAL/stm32h7xx_hal_conf.h"
+            COMMENT "Sync HAL config: cube/Core/Inc/stm32f0xx_hal_conf.h -> third_party/config/HAL/stm32f0xx_hal_conf.h"
             VERBATIM
         )
     endif ()
 
     add_subdirectory(${STM32_HAL_DIR}/CMSIS)
-    add_subdirectory(${STM32_HAL_DIR}/STM32F0xx_HAL_Driver)
+    # add_subdirectory(${STM32_HAL_DIR}/STM32F0xx_HAL_Driver)
     # add_subdirectory(${STM32_HAL_DIR}/Utilities/Fonts)
 
     message(STATUS "STM32 HAL: Configured from ${STM32_HAL_DIR}")
