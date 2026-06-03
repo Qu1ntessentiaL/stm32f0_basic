@@ -62,9 +62,8 @@ _Min_Stack_Size = 0x200; /* required amount of stack */
 /* Flash memory 0x08000000 - 0x08008000 */
 MEMORY
 {
-RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 4K
-FLASH (rx)     : ORIGIN = 0x08000000, LENGTH = 0x7FC0
-FW_INFO (r)    : ORIGIN = 0x08007FC0, LENGTH = 0x40
+  RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 4K
+  FLASH (rx)     : ORIGIN = 0x08000000, LENGTH = 32K
 }
 
 /* Define output sections */
@@ -178,7 +177,7 @@ SECTIONS
   .fw_info :
   {
     KEEP(*(.fw_info))
-  } >FW_INFO
+  } >FLASH
 
   /* Remove information from the standard libraries */
   /DISCARD/ :
