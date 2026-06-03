@@ -1,14 +1,17 @@
-name: Build STM32F0 Firmware (Windows + Presets + Cache + Size Check)
+name: Build STM32H7 Firmware (Windows + Presets + Cache + Size Check)
 
 on:
   push:
-    branches: [ main, dev ]
+    branches:
+      - "**"
   pull_request:
-    branches: [ main, dev ]
+    branches:
+      - "**"
 
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -20,30 +23,37 @@ jobs:
       - name: Install latest ARM GCC Toolchain
         uses: carlosperate/arm-none-eabi-gcc-action@v1
         with:
-          release: "13.3.Rel1"
+          release: "15.2.Rel1"
 
       - name: Check GCC version
         run: arm-none-eabi-gcc --version
 
       # ⚡️ Кэширование CMake сборок
-      - name: Cache CMake build
+      - name: Install ccache
+        run: choco install ccache
+
+      - name: Cache ccache
         uses: actions/cache@v4
         with:
-          path: |
-            build/Debug
-            build/Release
-          key: "${{ runner.os }}_stm32_${{ hashFiles('**/CMakeLists.txt', '**/CMakePresets.json', '.gitmodules') }}"
+          path: C:\Users\runneradmin\AppData\Local\ccache
+          key: ${{ runner.os }}-ccache-${{ hashFiles('**/*.c', '**/*.cpp', '**/*.h') }}
           restore-keys: |
-            ${{ runner.os }}_stm32_
+            ${{ runner.os }}-ccache-
 
-      # ---------- Debug build ----------
+      - name: Setup ccache
+        shell: bash
+        run: |
+          echo "CC=ccache arm-none-eabi-gcc" >> $GITHUB_ENV
+          echo "CXX=ccache arm-none-eabi-g++" >> $GITHUB_ENV
+
+      # Debug build
       - name: Configure Debug
         shell: bash
         run: cmake --preset Debug
 
       - name: Build Debug
         shell: bash
-        run: cmake --build build/Debug -j$(nproc)
+        run: cmake --build build/Debug --parallel
 
       - name: Show Debug firmware size
         shell: bash
@@ -66,14 +76,14 @@ jobs:
             build/Debug/**/*.hex
             build/Debug/**/*_disasm.s
 
-      # ---------- Release build ----------
+      # Release build
       - name: Configure Release
         shell: bash
         run: cmake --preset Release
 
       - name: Build Release
         shell: bash
-        run: cmake --build build/Release -j$(nproc)
+        run: cmake --build build/Release --parallel
 
       - name: Show Release firmware size
         shell: bash

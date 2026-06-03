@@ -1,52 +1,81 @@
-cmake_minimum_required(VERSION 3.22)
+# STM32F030 Firmware Project
+cmake_minimum_required(VERSION 3.15)
 
-set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS TRUE CACHE BOOL "" FORCE)
-set(CMAKE_VERBOSE_MAKEFILE OFF CACHE BOOL "" FORCE)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-project(stm32f0_basic LANGUAGES C CXX ASM)
+# Project Configuration
+project(stm32f0_basic
+        VERSION 1.0.0
+        LANGUAGES C CXX ASM
+)
 
+# C/C++ Standards
 set(CMAKE_C_STANDARD 11)
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Отключаем установку для embedded
-set(CMAKE_EXPORT_NO_PACKAGE_REGISTRY TRUE)
-set(CMAKE_SKIP_INSTALL_ALL_DEPENDENCY TRUE)
-set(CMAKE_SKIP_INSTALL_RULES TRUE)
+# Build type
+if (NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
+endif ()
 
-# Явно указываем пути установки для ETL
-set(CMAKE_INSTALL_LIBDIR "lib" CACHE STRING "" FORCE)
-set(CMAKE_INSTALL_INCLUDEDIR "include" CACHE STRING "" FORCE)
-set(CMAKE_INSTALL_BINDIR "bin" CACHE STRING "" FORCE)
+# Disable Link Time Optimization for reduced binary size
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 
-# set(USE_HAL_DRIVER_FLAG ON CACHE INTERNAL "Flag indicating HAL driver is used")
-# set(HAL_CONF_H_DIR ${CMAKE_SOURCE_DIR}/Src/)
+# CMake module path
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 
+# ===================
+# Memory layout alias
+# ===================
+# add_subdirectory(toolchain/mem_sections)
+
+# =====================
+# Third-Party Libraries
+# =====================
+include(ThirdParty)
+configure_all_third_party_libraries()
+
+# ===============
+# Main Executable
+# ===============
+
+# Startup and system files
 set(STARTUP_FILE ${CMAKE_SOURCE_DIR}/toolchain/gcc/startup_stm32f030x6.s)
 
+# Create executable
 add_executable(${PROJECT_NAME}
         ${STARTUP_FILE}
 )
 
-include(Src/src.cmake)
+# ==================
+# Project Components
+# ==================
 
-add_subdirectory(Libraries/CMSIS)
+# Application sources
+add_subdirectory(src)
 
-set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(NO_STL ON CACHE BOOL "" FORCE)  # Важно для embedded!
-add_subdirectory(Libraries/etl EXCLUDE_FROM_ALL)
-
-# add_subdirectory(Libraries/os)
-
-# stm32f1xx_hal_driver заменить на cmsis, если нет надобности в HAL
-target_link_libraries(${PROJECT_NAME} PRIVATE
+# ==============
+# Link Libraries
+# ==============
+target_link_libraries(${PROJECT_NAME}
+    PUBLIC
         cmsis
         etl::etl
-        # chibios-nano
 )
 
-# target_compile_options(${PROJECT_NAME} PRIVATE
-#         -include "${CMAKE_SOURCE_DIR}/Src/etl_config.h"
-# )
+# Optional: ETL support
+if (NO_STL)
+    target_compile_definitions(${PROJECT_NAME}
+        PUBLIC
+            ETL_NO_STL
+    )
+endif ()
+
+# =================
+# Add firmware info
+# =================
 
 execute_process(
         COMMAND git tag --points-at HEAD
@@ -68,62 +97,34 @@ add_compile_definitions(
 message(STATUS "FW_GIT_TAG = [${GIT_TAG}]")
 message(STATUS "GIT_HASH   = [${GIT_HASH}]")
 
-# Найти утилиты
-find_program(OBJCOPY arm-none-eabi-objcopy REQUIRED)
-find_program(SIZE arm-none-eabi-size REQUIRED)
-find_program(OBJDUMP arm-none-eabi-objdump REQUIRED)
+# ===================
+# Post-Build Commands
+# ===================
+include(PostBuild)
 
-# Путь к elf-файлу (предполагается, что имя target — firmware.elf)
-set(ELF_FILE ${CMAKE_BINARY_DIR}/${PROJECT_NAME}.elf)
-set(DISASM_FILE ${CMAKE_BINARY_DIR}/${PROJECT_NAME}_disasm.s)
+# Add post-build commands (HEX, BIN, disassembly)
+add_firmware_post_build_commands(${PROJECT_NAME})
 
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E echo "Generating HEX, BIN, and disassembly files..."
+# Add analysis targets
+add_symbol_sizes_postbuild(${PROJECT_NAME})
+add_symbol_addresses_postbuild(${PROJECT_NAME})
+add_text_info_target(${PROJECT_NAME})
 
-        # HEX файл
-        COMMAND arm-none-eabi-objcopy -O ihex
-        $<TARGET_FILE:${PROJECT_NAME}>
-        $<TARGET_FILE_BASE_NAME:${PROJECT_NAME}>.hex
+# Add flash operations
+add_erase_flash_target()
+add_flash_target(${PROJECT_NAME})
 
-        # BIN файл
-        COMMAND arm-none-eabi-objcopy -O binary
-        $<TARGET_FILE:${PROJECT_NAME}>
-        $<TARGET_FILE_BASE_NAME:${PROJECT_NAME}>.bin
-
-        # Размер секций
-        COMMAND arm-none-eabi-size $<TARGET_FILE:${PROJECT_NAME}>
-
-        # Дизассемблирование
-        COMMAND ${OBJDUMP} -d -S -M force-thumb -M reg-names-std
-        $<TARGET_FILE:${PROJECT_NAME}>
-        > $<TARGET_FILE_BASE_NAME:${PROJECT_NAME}>_disasm.s
-
-        COMMENT "Post-build: HEX, BIN, and disassembly"
-        VERBATIM
-)
-
-# Показывает таблицу функций (адрес, размер, тип, имя)
-add_custom_target(symbol_sizes
-        COMMAND ${CMAKE_OBJCOPY} -R .comment $<TARGET_FILE:${PROJECT_NAME}> tmp.elf
-        COMMAND arm-none-eabi-nm -S --size-sort tmp.elf > symbol_sizes.txt
-        COMMAND ${CMAKE_COMMAND} -E echo "================ Symbol sizes ================"
-        COMMAND ${CMAKE_COMMAND} -E cat symbol_sizes.txt
-        COMMAND ${CMAKE_COMMAND} -E rm -f tmp.elf symbol_sizes.txt
-        DEPENDS ${PROJECT_NAME}
-        COMMENT "Symbol sizes (sorted by size):"
-)
-
-# Показывает только секцию .text с функциями
-add_custom_target(text_info
-        COMMAND ${CMAKE_COMMAND} -E echo "================ .text section ================"
-        COMMAND arm-none-eabi-objdump -t $<TARGET_FILE:${PROJECT_NAME}> | findstr ".text"
-        DEPENDS ${PROJECT_NAME}
-        COMMENT "Functions in .text section:"
-)
-
-add_custom_target(erase_flash
-        COMMAND ${CMAKE_COMMAND} -E echo "Erasing flash memory..."
-        COMMAND openocd -f stm32f0.cfg -c "init; reset init; stm32f0x mass_erase 0; reset halt; shutdown"
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMENT "Erasing the flash memory of STM32F030K6T6"
-)
+# =============
+# Build Summary
+# =============
+message(STATUS "")
+message(STATUS "======= Build Configuration =======")
+message(STATUS "Project:      ${PROJECT_NAME} v${PROJECT_VERSION}")
+message(STATUS "Generator:    ${CMAKE_GENERATOR}")
+message(STATUS "Binary dir:   ${CMAKE_BINARY_DIR}")
+message(STATUS "Build Type:   ${CMAKE_BUILD_TYPE}")
+message(STATUS "Toolchain:    ${CMAKE_C_COMPILER_ID}")
+message(STATUS "C Standard:   ${CMAKE_C_STANDARD}")
+message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
+message(STATUS "===================================")
+message(STATUS "")
