@@ -47,6 +47,7 @@ HT1621B::HT1621B() : m_cs_pin(GPIOB, 5),
  * @defgroup Низкоуровневые функции работы с HT1621B
  */
 
+__attribute__((noinline))
 void HT1621B::WriteBit(uint8_t bit) {
     if (bit)
         m_data_pin.Set();
@@ -69,6 +70,7 @@ void HT1621B::WriteBit(uint8_t bit) {
     __NOP();
 }
 
+__attribute__((noinline))
 void HT1621B::WriteCommand(Commands cmd) {
     uint8_t cmd_v = cmd;
     m_cs_pin.Set();  // Убедимся, что CS в HIGH
@@ -95,6 +97,7 @@ void HT1621B::WriteCommand(Commands cmd) {
     __NOP();
 }
 
+__attribute__((noinline))
 void HT1621B::WriteData(uint8_t address, uint8_t data) {
     if (address >= 32) return;
 
