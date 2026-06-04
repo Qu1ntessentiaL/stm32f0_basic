@@ -1,6 +1,12 @@
 #include "ht1621.hpp"
 #include <cstddef>
 
+static inline void DelayCycles(uint32_t count) {
+    while (count--) {
+        __NOP();
+    }
+}
+
 static inline void itoa_simple(int value, char *buf) {
     char tmp[12];
     int i = 0;
@@ -53,32 +59,20 @@ void HT1621B::WriteBit(uint8_t bit) {
         m_data_pin.Set();
     else
         m_data_pin.Reset();
-    __NOP();
-    __NOP();
-    __NOP();
-    __NOP();
-    __NOP();
+    DelayCycles(18);
     m_write_pin.Reset();
-    __NOP();
-    __NOP();
-    __NOP();
-    __NOP();
-    __NOP();
+    DelayCycles(18);
     m_write_pin.Set();
-    __NOP();
-    __NOP();
-    __NOP();
+    DelayCycles(10);
 }
 
 __attribute__((noinline))
 void HT1621B::WriteCommand(Commands cmd) {
     uint8_t cmd_v = cmd;
     m_cs_pin.Set();  // Убедимся, что CS в HIGH
-    __NOP();
-    __NOP();
+    DelayCycles(20);
     m_cs_pin.Reset();
-    __NOP();
-    __NOP();
+    DelayCycles(20);
     WriteBit(1);
     WriteBit(0);
     WriteBit(0);
@@ -90,11 +84,9 @@ void HT1621B::WriteCommand(Commands cmd) {
         cmd_v <<= 1;
     }
     WriteBit(0);
-    __NOP();
-    __NOP();
+    DelayCycles(20);
     m_cs_pin.Set();
-    __NOP();
-    __NOP();
+    DelayCycles(20);
 }
 
 __attribute__((noinline))
@@ -102,11 +94,9 @@ void HT1621B::WriteData(uint8_t address, uint8_t data) {
     if (address >= 32) return;
 
     m_cs_pin.Set();  // Убедимся, что CS в HIGH
-    __NOP();
-    __NOP();
+    DelayCycles(20);
     m_cs_pin.Reset();
-    __NOP();
-    __NOP();
+    DelayCycles(20);
 
     WriteBit(1);
     WriteBit(0);
@@ -126,11 +116,9 @@ void HT1621B::WriteData(uint8_t address, uint8_t data) {
         data >>= 1;
     }
 
-    __NOP();
-    __NOP();
+    DelayCycles(20);
     m_cs_pin.Set();
-    __NOP();
-    __NOP();
+    DelayCycles(20);
 }
 
 /**
