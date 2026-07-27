@@ -1,35 +1,81 @@
 #include "ht1621.hpp"
-#include <cstddef>
 
-static inline void DelayCycles(uint32_t count) {
-    while (count--) {
-        __NOP();
+namespace {
+    // ~1 µs при 48 МГц (HT1621: min 1 µs на такт DATA/WR)
+    constexpr uint32_t kDelayUs = 48;
+
+    enum Command : uint8_t {
+        SysEn = 0x01,
+        LcdOn = 0x03,
+        RC256K = 0x18,
+        Bias12 = 0x28, // 1/2 bias, 4 commons
+    };
+
+    /** Значения 4 нибблов разряда (относительные адреса base+1..base+4). */
+    constexpr uint8_t kDigitGlyphs[10][4] = {
+        {3, 2, 1, 3}, // 0
+        {0, 0, 1, 2}, // 1
+        {2, 3, 0, 3}, // 2
+        {0, 3, 1, 3}, // 3
+        {1, 1, 1, 2}, // 4
+        {1, 3, 1, 1}, // 5
+        {3, 3, 1, 1}, // 6
+        {0, 0, 1, 3}, // 7
+        {3, 3, 1, 3}, // 8
+        {1, 3, 1, 3}, // 9
+    };
+
+    constexpr uint8_t kLetterGlyphs[21][4] = {
+        {3, 1, 1, 3}, // A
+        {3, 3, 1, 0}, // b
+        {3, 2, 0, 1}, // C
+        {2, 3, 1, 2}, // d
+        {3, 3, 0, 1}, // E
+        {3, 1, 0, 1}, // F
+        {3, 2, 1, 1}, // G
+        {3, 1, 1, 0}, // h
+        {3, 0, 0, 0}, // I
+        {0, 2, 1, 2}, // J
+        {3, 2, 0, 0}, // L
+        {2, 1, 1, 0}, // n
+        {2, 3, 1, 0}, // o
+        {3, 1, 0, 3}, // P
+        {2, 1, 0, 0}, // r
+        {3, 3, 0, 0}, // t
+        {3, 2, 1, 2}, // U
+        {3, 1, 1, 2}, // X
+        {0, 1, 0, 0}, // -
+        {0, 2, 0, 0}, // _
+        {0, 0, 0, 0}, // space
+    };
+
+    constexpr uint8_t kGlyphDash = 18;
+    constexpr uint8_t kSharedNibbleAddr = 0x17;
+    constexpr uint8_t kSharedSegMask = 0x01;
+    constexpr uint32_t kInitDelayUs = 1000;
+
+    constexpr uint8_t kDotAddrs[5] = {0x03, 0x07, 0x0B, 0x0F, 0x13};
+    constexpr uint8_t kDotMask = 0x02;
+
+    constexpr struct {
+        uint8_t addr;
+        uint8_t mask;
+    } kChargeSegs[4] = {
+        {0x1A, 1}, {0x1B, 2}, {0x1B, 1}, {0x1A, 2},
+    };
+
+    constexpr struct {
+        uint8_t addr;
+        uint8_t mask;
+    } kSpecials[4] = {
+        {0x00, 0x01}, {0x00, 0x02}, {0x17, 0x02}, {0x19, 0x02},
+    };
+
+    /** Маска сегментов: addr+3 делит ниббл с DP / иконкой "k". */
+    constexpr uint8_t kGlyphMask(uint8_t rel) {
+        return (rel == 3) ? 0x01u : 0x03u;
     }
-}
-
-static inline void itoa_simple(int value, char *buf) {
-    char tmp[12];
-    int i = 0;
-    bool neg = false;
-
-    if (value < 0) {
-        neg = true;
-        value = -value;
-    }
-
-    do {
-        tmp[i++] = '0' + (value % 10);
-        value /= 10;
-    } while (value);
-
-    if (neg)
-        *buf++ = '-';
-
-    while (i--)
-        *buf++ = tmp[i];
-
-    *buf = '\0';
-}
+} // namespace
 
 HT1621B::HT1621B() : m_cs_pin(GPIOB, 5),
                      m_write_pin(GPIOB, 4),
@@ -46,291 +92,319 @@ HT1621B::HT1621B() : m_cs_pin(GPIOB, 5),
                     GpioDriver::OutType::PushPull,
                     GpioDriver::Pull::None,
                     GpioDriver::Speed::High);
-    Init();
+
+    m_cs_pin.Set();
+    m_write_pin.Set();
+    m_data_pin.Reset();
 }
 
-/**
- * @defgroup Низкоуровневые функции работы с HT1621B
- */
+void HT1621B::delayCycles(uint32_t n) const {
+    while (n--) {
+        __NOP();
+    }
+}
+
+void HT1621B::delayUs(uint32_t us) const {
+    delayCycles(us * kDelayUs);
+}
 
 __attribute__((noinline))
-void HT1621B::WriteBit(uint8_t bit) {
+void HT1621B::beginTransfer(bool isData) const {
+    m_cs_pin.Set();
+    delayCycles(kDelayUs / 2);
+    m_cs_pin.Reset();
+    delayCycles(kDelayUs / 2);
+
+    writeBit(true);
+    writeBit(false);
+    writeBit(isData);
+}
+
+__attribute__((noinline))
+void HT1621B::endTransfer() const {
+    delayCycles(kDelayUs / 2);
+    m_cs_pin.Set();
+    delayCycles(kDelayUs / 2);
+}
+
+__attribute__((noinline))
+void HT1621B::writeBit(bool bit) const {
     if (bit)
         m_data_pin.Set();
     else
         m_data_pin.Reset();
-    DelayCycles(18);
+
+    delayCycles(kDelayUs);
+
     m_write_pin.Reset();
-    DelayCycles(18);
+    delayCycles(kDelayUs);
     m_write_pin.Set();
-    DelayCycles(10);
+    delayCycles(kDelayUs / 2);
 }
 
-__attribute__((noinline))
-void HT1621B::WriteCommand(Commands cmd) {
-    uint8_t cmd_v = cmd;
-    m_cs_pin.Set();  // Убедимся, что CS в HIGH
-    DelayCycles(20);
-    m_cs_pin.Reset();
-    DelayCycles(20);
-    WriteBit(1);
-    WriteBit(0);
-    WriteBit(0);
-    for (uint8_t i = 0; i < 8; i++) {
-        if ((cmd_v & 0x80) == 0x80)
-            WriteBit(1);
-        else
-            WriteBit(0);
-        cmd_v <<= 1;
+void HT1621B::writeCommand(uint8_t cmd) {
+    beginTransfer(false);
+
+    for (uint8_t i = 0; i < 8; ++i) {
+        writeBit((cmd & 0x80) != 0);
+        cmd <<= 1;
     }
-    WriteBit(0);
-    DelayCycles(20);
-    m_cs_pin.Set();
-    DelayCycles(20);
+
+    writeBit(false);
+    endTransfer();
 }
 
-__attribute__((noinline))
-void HT1621B::WriteData(uint8_t address, uint8_t data) {
-    if (address >= 32) return;
+void HT1621B::writeDataBurst(uint8_t startAddr, uint8_t endAddr) {
+    if (startAddr >= kVramSize || endAddr >= kVramSize || startAddr > endAddr)
+        return;
 
-    m_cs_pin.Set();  // Убедимся, что CS в HIGH
-    DelayCycles(20);
-    m_cs_pin.Reset();
-    DelayCycles(20);
+    beginTransfer(true);
 
-    WriteBit(1);
-    WriteBit(0);
-    WriteBit(1);
-
-    address <<= 2;
-    for (uint8_t i = 0; i < 6; i++) {
-        if ((address & 0x80) == 0x80)
-            WriteBit(1);
-        else
-            WriteBit(0);
-        address <<= 1;
+    uint8_t addr = static_cast<uint8_t>(startAddr << 2);
+    for (uint8_t i = 0; i < 6; ++i) {
+        writeBit((addr & 0x80) != 0);
+        addr <<= 1;
     }
 
-    for (uint8_t i = 0; i < 4; i++) {
-        WriteBit((data & 0x01) ? 1 : 0);
-        data >>= 1;
+    for (uint8_t a = startAddr; a <= endAddr; ++a) {
+        uint8_t data = m_vram[a];
+        for (uint8_t b = 0; b < 4; ++b) {
+            writeBit((data & 0x01) != 0);
+            data >>= 1;
+        }
     }
 
-    DelayCycles(20);
-    m_cs_pin.Set();
-    DelayCycles(20);
+    endTransfer();
 }
 
-/**
- * @defgroup Функции для работы с VRAM
- */
+void HT1621B::flushAll() {
+    writeDataBurst(0, kVramSize - 1);
+}
 
-void HT1621B::SetData(uint8_t address, uint8_t data, WriteMode mode) {
-    if (address >= sizeof(m_vram)) return;
+void HT1621B::flushDirty() {
+    uint32_t dirty = m_dirty;
+    if (!dirty) return;
 
-    switch (mode) {
-        case WriteMode::Replace:
-            m_vram[address] = data;
-            break;
-        case WriteMode::SetBit:
-            m_vram[address] |= data;
-            break;
-        case WriteMode::ClearBit:
-            m_vram[address] &= ~data;
-            break;
+    if (dirty == 0xFFFFFFFFu || __builtin_popcount(dirty) > 16) {
+        flushAll();
+        m_dirty = 0;
+        return;
     }
+
+    while (dirty) {
+        const uint8_t start = static_cast<uint8_t>(__builtin_ctz(dirty));
+        uint8_t end = start;
+        uint32_t run = 1u << start;
+
+        while (end + 1 < kVramSize && (dirty & (run << 1))) {
+            ++end;
+            run <<= 1;
+        }
+
+        writeDataBurst(start, end);
+        dirty &= ~((2u << end) - (1u << start));
+    }
+
+    m_dirty = 0;
+}
+
+void HT1621B::touch(uint8_t addr, uint8_t value) {
+    if (addr >= kVramSize) return;
+    value &= 0x0Fu;
+    if (m_vram[addr] == value) return;
+    m_vram[addr] = value;
+    m_dirty |= (1u << addr);
+}
+
+void HT1621B::setBits(uint8_t addr, uint8_t mask) {
+    if (addr >= kVramSize) return;
+    const uint8_t next = static_cast<uint8_t>(m_vram[addr] | mask);
+    touch(addr, next);
+}
+
+void HT1621B::clearBits(uint8_t addr, uint8_t mask) {
+    if (addr >= kVramSize) return;
+    const uint8_t next = static_cast<uint8_t>(m_vram[addr] & ~mask);
+    touch(addr, next);
+}
+
+void HT1621B::writeGlyph(uint8_t base, const uint8_t segs[kSegsPerDigit]) {
+    for (uint8_t i = 0; i < kSegsPerDigit; ++i) {
+        const uint8_t addr = static_cast<uint8_t>(base + i + 1);
+        const uint8_t mask = kGlyphMask(static_cast<uint8_t>(i + 1));
+        const uint8_t value = static_cast<uint8_t>((m_vram[addr] & ~mask) | (segs[i] & mask));
+        touch(addr, value);
+    }
+}
+
+int HT1621B::letterIndex(char c) {
+    switch (c) {
+        case 'A': return 0;
+        case 'b': return 1;
+        case 'C': return 2;
+        case 'd': return 3;
+        case 'E': return 4;
+        case 'F': return 5;
+        case 'G': return 6;
+        case 'h': return 7;
+        case 'I': return 8;
+        case 'J': return 9;
+        case 'L': return 10;
+        case 'n': return 11;
+        case 'o': return 12;
+        case 'P': return 13;
+        case 'r': return 14;
+        case 't': return 15;
+        case 'U': return 16;
+        case 'X': return 17;
+        case '-': return 18;
+        case '_': return 19;
+        case ' ': return 20;
+        default: return -1;
+    }
+}
+
+void HT1621B::showChar(uint8_t position, char c) {
+    if (position >= kDigitCount) return;
+
+    if (c >= '0' && c <= '9') {
+        writeGlyph(digitBase(position), kDigitGlyphs[c - '0']);
+        return;
+    }
+
+    const int idx = letterIndex(c);
+    if (idx >= 0)
+        writeGlyph(digitBase(position), kLetterGlyphs[idx]);
 }
 
 void HT1621B::Flush() {
-    for (size_t i = 0; i < sizeof(m_vram); i++) {
-        WriteData(i, m_vram[i]);
-    }
+    flushDirty();
 }
 
 void HT1621B::FullClear(bool flushNow) {
-    for (size_t i = 0; i < sizeof(m_vram); ++i) {
+    for (uint8_t i = 0; i < kVramSize; ++i)
         m_vram[i] = 0;
-    }
+    m_dirty = 0xFFFFFFFFu;
     if (flushNow) Flush();
 }
 
 void HT1621B::ClearSegArea(bool flushNow) {
-    // Очистим только 6 x 4 байта сегментов
-    for (uint8_t i = 1; i <= 6 * 4; ++i) {
-        if (i == 0x17)
-            m_vram[i] &= ~0b01; // Чтобы не очищать десятичные разделители
+    for (uint8_t i = 1; i <= kDigitCount * kSegsPerDigit; ++i) {
+        if (i == kSharedNibbleAddr)
+            clearBits(i, kSharedSegMask);
         else
-            m_vram[i] = 0;
+            touch(i, 0);
     }
-
     if (flushNow) Flush();
 }
 
 void HT1621B::Init() {
-    // Выбираем внутренний генератор 256 КГц
-    WriteCommand(Commands::RC256K);
-    for (int i = 0; i < 1000; i++) __NOP();
-    
-    // Выбираем режим работы: 4-коммутирующий режим, bias 1/3
-    WriteCommand(Commands::Bias12);
-    for (int i = 0; i < 1000; i++) __NOP();
-    
-    // Включаем систему
-    WriteCommand(Commands::SysEn);
-    for (int i = 0; i < 1000; i++) __NOP();
-    
-    // Включаем LCD
-    WriteCommand(Commands::LcdOn);
-    for (int i = 0; i < 1000; i++) __NOP();
-    
-    // Очищаем дисплей
+    writeCommand(RC256K);
+    delayUs(kInitDelayUs);
+    writeCommand(Bias12);
+    delayUs(kInitDelayUs);
+    writeCommand(SysEn);
+    delayUs(kInitDelayUs);
+    writeCommand(LcdOn);
+    delayUs(kInitDelayUs);
     FullClear(true);
-    for (int i = 0; i < 1000; i++) __NOP();
 }
 
 void HT1621B::ShowDot(uint8_t position, bool enable, bool flushNow) {
-    if (position == 0 || position >= 6) return;
+    if (position == 0 || position >= kDigitCount) return;
 
-    const auto &dot = m_dots[5 - position];
-
-    SetData(dot.addr, dot.val, enable ? WriteMode::SetBit : WriteMode::ClearBit);
+    const uint8_t addr = kDotAddrs[5 - position];
+    if (enable)
+        setBits(addr, kDotMask);
+    else
+        clearBits(addr, kDotMask);
 
     if (flushNow) Flush();
 }
 
-void HT1621B::ShowSpecial(uint8_t type, bool enable, bool flushNow) {
-    if (type > 3) return;
+void HT1621B::ShowSpecial(Special type, bool enable, bool flushNow) {
+    const uint8_t idx = static_cast<uint8_t>(type);
+    if (idx > 3) return;
 
-    const auto &special = m_specials[type];
-
-    SetData(special.addr, special.val, enable ? WriteMode::SetBit : WriteMode::ClearBit);
+    const auto &s = kSpecials[idx];
+    if (enable)
+        setBits(s.addr, s.mask);
+    else
+        clearBits(s.addr, s.mask);
 
     if (flushNow) Flush();
 }
 
 void HT1621B::ShowDigit(uint8_t position, uint8_t digit, bool withDot, bool flushNow) {
-    if (position >= 6 || digit > 9) return;
+    if (position >= kDigitCount || digit > 9) return;
 
-    const uint8_t base = (5 - position) * 4;
+    writeGlyph(digitBase(position), kDigitGlyphs[digit]);
 
-    // Отрисовка цифры - используем Replace режим для корректной перезаписи
-    for (const auto &seg: m_digits[digit]) {
-        if (seg.addr == 0) break;
-        SetData(seg.addr + base, seg.val, WriteMode::Replace);
-    }
-
-    // Добавляем точку, если нужно
-    if (withDot && position > 0) {
-        ShowDot(position, true);
-    }
+    if (withDot && position > 0)
+        setBits(kDotAddrs[5 - position], kDotMask);
 
     if (flushNow) Flush();
 }
 
 void HT1621B::ShowFull(bool flushNow) {
-    for (size_t i = 0; i < sizeof(m_vram); ++i) {
-        m_vram[i] = 0xFF;
-    }
+    for (uint8_t i = 0; i < kVramSize; ++i)
+        touch(i, 0x0F);
     if (flushNow) Flush();
 }
 
 void HT1621B::ShowLetter(uint8_t position, char c, bool flushNow) {
-    if (position >= 6) return;
-
-    const uint8_t base = (5 - position) * 4;
-    const Segment *segs = nullptr;
-
-    switch (c) {
-        case 'A': segs = m_letters[0]; break;
-        case 'b': segs = m_letters[1]; break;
-        case 'C': segs = m_letters[2]; break;
-        case 'd': segs = m_letters[3]; break;
-        case 'E': segs = m_letters[4]; break;
-        case 'F': segs = m_letters[5]; break;
-        case 'G': segs = m_letters[6]; break;
-        case 'h': segs = m_letters[7]; break;
-        case 'I': segs = m_letters[8]; break;
-        case 'J': segs = m_letters[9]; break;
-        case 'L': segs = m_letters[10]; break;
-        case 'n': segs = m_letters[11]; break;
-        case 'o': segs = m_letters[12]; break;
-        case 'P': segs = m_letters[13]; break;
-        case 'r': segs = m_letters[14]; break;
-        case 't': segs = m_letters[15]; break;
-        case 'U': segs = m_letters[16]; break;
-        case 'X': segs = m_letters[17]; break;
-        case '-': segs = m_letters[18]; break;
-        case '_': segs = m_letters[19]; break;
-        default: return;
-    }
-
-    // Отрисовка всех непустых сегментов
-    for (uint8_t i = 0; i < 4; ++i) {
-        if (segs[i].val)
-            SetData(segs[i].addr + base, segs[i].val);
-    }
-
+    showChar(position, c);
     if (flushNow) Flush();
 }
 
 void HT1621B::ShowString(const char *str, bool flushNow) {
     if (!str) return;
 
-    // Очищаем только сегменты цифр/символов, оставляем иконки нетронутыми
     ClearSegArea(false);
 
-    // Вычисляем длину строки (не более 6 символов)
     uint8_t len = 0;
-    while (str[len] && len < 6) len++;
+    while (str[len] && len < kDigitCount) ++len;
 
-    // Позиции на индикаторе идут справа налево:
-    // pos = 0 (правый символ), pos = len - 1 (левый)
-    for (uint8_t i = 0; i < len; ++i) {
-        char c = str[len - 1 - i];  // Выводим в обратном порядке
-        if (c >= '0' && c <= '9') {
-            ShowDigit(i, c - '0', false, false);
-        } else {
-            ShowLetter(i, c, false);
-        }
-    }
+    for (uint8_t i = 0; i < len; ++i)
+        showChar(i, str[len - 1 - i]);
 
     if (flushNow) Flush();
 }
 
 void HT1621B::ShowInt(int value, bool flushNow) {
-    char buf[8];
-    itoa_simple(value, buf);
+    ClearSegArea(false);
 
-    bool negative = (value < 0);
-    uint8_t start = negative ? 1 : 0; // Пропустить '-' при выводе цифр
+    const bool negative = value < 0;
+    unsigned mag = negative
+                       ? static_cast<unsigned>(-(value + 1)) + 1u
+                       : static_cast<unsigned>(value);
 
-    // Вычисляем длину (без знака)
-    uint8_t len = 0;
-    while (buf[len]) len++;
-    uint8_t l_digits = len - start;
+    unsigned tmp = mag;
+    uint8_t digits = 0;
+    do {
+        ++digits;
+        tmp /= 10;
+    }
+    while (tmp);
 
-    // Проверяем, влезет ли в 6 позиций
-    // Если отрицательное — минус + 5 цифр, иначе 6 цифр максимум
-    if ((!negative && l_digits > 6) || (negative && l_digits > 5)) {
-        // Покажем "------" как индикатор переполнения
-        for (uint8_t i = 0; i < 6; ++i)
-            SetData(i * 4 + 2, 1); // Короткий сегмент по центру
+    const uint8_t maxDigits = negative ? 5u : 6u;
+    if (digits > maxDigits) {
+        for (uint8_t i = 0; i < kDigitCount; ++i)
+            writeGlyph(digitBase(i), kLetterGlyphs[kGlyphDash]);
         if (flushNow) Flush();
         return;
     }
 
     uint8_t pos = 0;
-    for (int i = len - 1; i >= start && pos < 6; --i) {
-        ShowDigit(pos++, buf[i] - '0', false, false);
+    do {
+        writeGlyph(digitBase(pos), kDigitGlyphs[mag % 10]);
+        mag /= 10;
+        ++pos;
     }
+    while (mag && pos < kDigitCount);
 
-    // Если отрицательное и есть место — показываем минус
-    if (negative && pos < 6) {
-        // Нарисуем "–" слева от числа
-        // Можно использовать WriteData(base + смещение, значение)
-        uint8_t base = (5 - pos) * 4;
-        SetData(base + 2, 1); // Маленький горизонтальный сегмент
-    }
+    if (negative && pos < kDigitCount)
+        writeGlyph(digitBase(pos), kLetterGlyphs[kGlyphDash]);
 
     if (flushNow) Flush();
 }
@@ -338,46 +412,40 @@ void HT1621B::ShowInt(int value, bool flushNow) {
 void HT1621B::ShowChargeLevel(uint8_t level, bool flushNow) {
     if (level > 3) level = 3;
 
-    // Перебираем все 4 сегмента батарейки
     for (uint8_t i = 0; i < 4; ++i) {
-        const auto &seg = m_chargeLevels[i];
-
-        // Если уровень >= i, зажигаем, иначе гасим
-        SetData(seg.addr, seg.val, (i <= level) ? WriteMode::SetBit : WriteMode::ClearBit);
+        const auto &s = kChargeSegs[i];
+        if (i <= level)
+            setBits(s.addr, s.mask);
+        else
+            clearBits(s.addr, s.mask);
     }
 
     if (flushNow) Flush();
 }
 
 void HT1621B::ShowDate(uint8_t day, uint8_t month, uint8_t year, bool flushNow) {
-    // Обрезаем значения
-    day   %= 100;
+    day %= 100;
     month %= 100;
-    year  %= 100;
+    year %= 100;
 
-    if (day == 0 || day > 31 ||
-        month == 0 || month > 12) {
+    if (day == 0 || day > 31 || month == 0 || month > 12)
         return;
-    }
 
-    FullClear(false);
+    ClearSegArea(false);
 
-    // Формируем цифры в порядке, соответствующем ShowDigit(pos,...)
-    // pos 0 = правый символ (год единицы), pos 5 = левый (десятки дня)
-    uint8_t digits[6];
-    digits[0] = year % 10;
-    digits[1] = year / 10;
-    digits[2] = month % 10;
-    digits[3] = month / 10;
-    digits[4] = day % 10;
-    digits[5] = day / 10;
+    const uint8_t digits[6] = {
+        static_cast<uint8_t>(year % 10),
+        static_cast<uint8_t>(year / 10),
+        static_cast<uint8_t>(month % 10),
+        static_cast<uint8_t>(month / 10),
+        static_cast<uint8_t>(day % 10),
+        static_cast<uint8_t>(day / 10),
+    };
 
-    // Выводим справа налево: позиция 0 — правый сегмент, позиция 5 — левый
-    // Формат: DD.MM.YY
-    for (uint8_t pos = 0; pos < 6; ++pos) {
-        bool dot = false;
-        if (pos == 2 || pos == 4) dot = true; // точки между D и M, между M и Y
-        ShowDigit(pos, digits[pos], dot, false);
+    for (uint8_t pos = 0; pos < kDigitCount; ++pos) {
+        writeGlyph(digitBase(pos), kDigitGlyphs[digits[pos]]);
+        if (pos == 2 || pos == 4)
+            setBits(kDotAddrs[5 - pos], kDotMask);
     }
 
     if (flushNow) Flush();

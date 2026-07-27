@@ -3,231 +3,255 @@
 #include "stm32f0xx.h"
 #include "GpioDriver.hpp"
 
+/**
+ * @brief Драйвер LCD-контроллера HT1621B.
+ *
+ * Плата: CS=PB5, WR=PB4, DATA=PB3.
+ *
+ * Дисплей: 6 семисегментных разрядов + десятичные точки + иконки
+ * (уровень заряда, NET, «k», «g» и др.). Каждый разряд занимает 4 адреса VRAM
+ * (base+1 .. base+4); позиция 0 — правый разряд, 5 — левый.
+ *
+ * Таблицы глифов (цифры, буквы, точки, иконки) хранятся в ht1621.cpp
+ * в компактном виде: 4 байта на символ (значения нибблов base+1..base+4).
+ *
+ * Обновление экрана двухфазное:
+ *  1. Высокоуровневые Show* меняют локальный m_vram и помечают адреса в m_dirty.
+ *  2. Flush() отправляет на HT1621 только изменённые (или все) адреса.
+ */
 class HT1621B {
-    struct Segment {
-        uint8_t addr;
-        uint8_t val;
-    };
+    /** Размер RAM контроллера HT1621B (32 × 4 бита). */
+    static constexpr uint8_t kVramSize = 32;
 
-    enum class WriteMode : uint8_t {
-        Replace,
-        SetBit,
-        ClearBit
-    };
+    /** Количество семисегментных разрядов на дисплее. */
+    static constexpr uint8_t kDigitCount = 6;
 
-    /**
-     * @brief Массив для формирования цифр
-     */
-    static constexpr Segment m_digits[10][4] = {
-            /* 0 */ {{1, 3}, {2, 2}, {3, 1}, {4, 3}},
-            /* 1 */ {{1, 0}, {2, 0}, {3, 1}, {4, 2}},
-            /* 2 */ {{1, 2}, {2, 3}, {3, 0}, {4, 3}},
-            /* 3 */ {{1, 0}, {2, 3}, {3, 1}, {4, 3}},
-            /* 4 */ {{1, 1}, {2, 1}, {3, 1}, {4, 2}},
-            /* 5 */ {{1, 1}, {2, 3}, {3, 1}, {4, 1}},
-            /* 6 */ {{1, 3}, {2, 3}, {3, 1}, {4, 1}},
-            /* 7 */ {{1, 0}, {2, 0}, {3, 1}, {4, 3}},
-            /* 8 */ {{1, 3}, {2, 3}, {3, 1}, {4, 3}},
-            /* 9 */ {{1, 1}, {2, 3}, {3, 1}, {4, 3}}
-    };
+    /** Число VRAM-адресов на один разряд (4 сегментных ниббла). */
+    static constexpr uint8_t kSegsPerDigit = 4;
+
+    uint8_t m_vram[kVramSize]{}; ///< Зеркало RAM контроллера HT1621B
+    uint32_t m_dirty = 0; ///< Бит N = 1 → адрес N нужно отправить в Flush()
+
+    GpioDriver m_cs_pin;   ///< CS  (PB5)
+    GpioDriver m_write_pin; ///< WR  (PB4)
+    GpioDriver m_data_pin;  ///< DATA (PB3)
 
     /**
-     * @brief Набор латинских букв для 7-сегментного индикатора
+     * @brief Программная задержка в циклах CPU.
+     * @param n Число итераций __NOP (калибровано под 48 МГц)
      */
-    static constexpr Segment m_letters[][4] = {
-            /* A */ {{1,3}, {2,1}, {3,1}, {4,3}},
-            /* b */ {{1,3}, {2,3}, {3,1}, {4,0}},
-            /* C */ {{1,3}, {2,2}, {3,0}, {4,1}},
-            /* d */ {{1,2}, {2,3}, {3,1}, {4,2}},
-            /* E */ {{1,3}, {2,3}, {3,0}, {4,1}},
-            /* F */ {{1,3}, {2,1}, {3,0}, {4,1}},
-            /* G */ {{1,3}, {2,2}, {3,1}, {4,1}},
-            /* h */ {{1,3}, {2,1}, {3,1}, {4,0}},
-            /* I */ {{1,3}, {2,0}, {3,0}, {4,0}},
-            /* J */ {{1,0}, {2,2}, {3,1}, {4,2}},
-            /* L */ {{1,3}, {2,2}, {3,0}, {4,0}},
-            /* n */ {{1,2}, {2,1}, {3,1}, {4,0}},
-            /* o */ {{1,2}, {2,3}, {3,1}, {4,0}},
-            /* P */ {{1,3}, {2,1}, {3,0}, {4,3}},
-            /* r */ {{1,2}, {2,1}, {3,0}, {4,0}},
-            /* t */ {{1,3}, {2,3}, {3,0}, {4,0}},
-            /* U */ {{1,3}, {2,2}, {3,1}, {4,2}},
-            /* X */ {{1,3}, {2,1}, {3,1}, {4,2}},
-            /* - */ {{1,0}, {2,1}, {3,0}, {4,0}},
-            /* _ */ {{1,0}, {2,2}, {3,0}, {4,0}},
-            /* Space {{1,0}, {2,0}, {3,0}, {4,0}}, */
-    };
+    void delayCycles(uint32_t n) const;
 
     /**
-     * @brief Массив для формирования десятичных разделителей
+     * @brief Запись одного бита данных или команды в контроллер HT1621B.
+     * @param bit Значение бита (0 или 1)
      */
-    static constexpr Segment m_dots[5] = {
-            {0x03, 0x02},
-            {0x07, 0x02},
-            {0x0B, 0x02},
-            {0x0F, 0x02},
-            {0x13, 0x02},
-    };
+    void writeBit(bool bit) const;
 
     /**
-     * @brief Массив для формирования знаков уровня заряда
+     * @brief Отправка команды на контроллер HT1621B.
+     * @param cmd Код команды (см. datasheet, enum Command в ht1621.cpp)
      */
-    static constexpr Segment m_chargeLevels[4] = {
-            {0x1A, 1},
-            {0x1B, 2},
-            {0x1B, 1},
-            {0x1A, 2},
-    };
+    void writeCommand(uint8_t cmd);
 
     /**
-     * @brief Массив для формирования специальных символов
+     * @brief Запись непрерывного диапазона адресов VRAM за одну транзакцию.
+     *
+     * HT1621 после указания стартового адреса автоматически инкрементирует его
+     * при последовательной передаче 4-битных слов.
+     *
+     * @param startAddr Начальный адрес VRAM [0..31]
+     * @param endAddr   Конечный адрес VRAM (включительно)
      */
-    static constexpr Segment m_specials[4] = {
-            /* ->0<- */ {0x00, 0x01},
-            /*  NET  */ {0x00, 0x02},
-            /*   k   */ {0x17, 0x02},
-            /*   g   */ {0x19, 0x02},
-    };
+    void writeDataBurst(uint8_t startAddr, uint8_t endAddr);
+
+    /** @brief Отправить весь m_vram[0..31] одной транзакцией. */
+    void flushAll();
 
     /**
-     * @brief Управляющие команды для контроллера HT1621B
+     * @brief Отправить только изменённые адреса (см. m_dirty).
+     *
+     * Сливает соседние «грязные» адреса в один burst. Если изменено больше
+     * половины RAM — вызывает flushAll() как более выгодный вариант.
      */
-    enum Commands : uint8_t {
-        SysDis = 0,
-        SysEn,
-        LcdOff,
-        LcdOn,
-        RC256K = 0x18,
-        Bias12 = 0x28, // 4 commons option
-        Bias13 = 0x29, // 4 commons option
-    };
-
-    uint8_t m_vram[32] = {0}; ///< RAM-память для контроллера HT1621B
-
-    GpioDriver m_cs_pin, m_write_pin, m_data_pin;
+    void flushDirty();
 
     /**
-     * @brief Запись бита данных или команды в контроллер HT1621B
-     * @param bit Бит данных или команды
+     * @brief Записать значение в VRAM и пометить адрес, если байт изменился.
+     * @param addr  Адрес VRAM [0..31]
+     * @param value Новое 4-битное значение
      */
-    void WriteBit(uint8_t bit);
+    void touch(uint8_t addr, uint8_t value);
 
     /**
-     * @brief Отправка команды на контроллер HT1621B
-     * @param cmd Команда контроллера HT1621B (см. datasheet)
+     * @brief Установить биты в VRAM (OR).
+     * @param addr Адрес VRAM
+     * @param mask Маска устанавливаемых битов
      */
-    void WriteCommand(Commands cmd);
+    void setBits(uint8_t addr, uint8_t mask);
 
     /**
-     * @brief Отправляет данные на дисплей
-     * @param address
-     * @param data Байт данных
+     * @brief Сбросить биты в VRAM (AND NOT).
+     * @param addr Адрес VRAM
+     * @param mask Маска сбрасываемых битов
      */
-    void WriteData(uint8_t address, uint8_t data);
+    void clearBits(uint8_t addr, uint8_t mask);
 
     /**
-     * @brief Функция, записывающая данные от высокоуровневых функций в RAM
-     * @param address
-     * @param data
-     * @param mode
+     * @brief Вывести глиф (цифру или букву) в заданный разряд.
+     *
+     * Записывает 4 ниббла разряда, не затрагивая биты DP и иконки «k»
+     * в общем ниббле base+3 (маска 0x01 вместо 0x03).
+     *
+     * @param base Базовый адрес разряда: (5 − position) × 4
+     * @param segs Указатель на 4 байта — значения нибблов base+1..base+4
+     *             (таблицы kDigitGlyphs / kLetterGlyphs в ht1621.cpp)
      */
-    void SetData(uint8_t address, uint8_t data, WriteMode mode = WriteMode::Replace);
+    void writeGlyph(uint8_t base, const uint8_t segs[kSegsPerDigit]);
+
+    /**
+     * @brief Индекс буквы в kLetterGlyphs или −1, если символ не поддержан.
+     * @param c Символ из набора: A, b, C, d, E, F, G, h, I, J, L, n, o, P, r, t, U, X, -, _, пробел
+     */
+    static int letterIndex(char c);
+
+    /** @brief Вывести символ (цифра или буква) в разряд position. */
+    void showChar(uint8_t position, char c);
+
+    /** @brief Начать SPI-подобную транзакцию (CS↓, преамбула 100/0/D). */
+    void beginTransfer(bool isData) const;
+
+    /** @brief Завершить транзакцию (CS↑). */
+    void endTransfer() const;
+
+    /** @brief Задержка в микросекундах (калибровка под 48 МГц). */
+    void delayUs(uint32_t us) const;
+
+    /**
+     * @brief Базовый VRAM-адрес разряда по его позиции на дисплее.
+     * @param position Позиция [0..5]: 0 — правый, 5 — левый
+     * @return (5 − position) × kSegsPerDigit
+     */
+    static uint8_t digitBase(uint8_t position) {
+        return static_cast<uint8_t>((kDigitCount - 1 - position) * kSegsPerDigit);
+    }
 
 public:
+    /** Иконки на дисплее (см. kSpecials в ht1621.cpp). */
+    enum class Special : uint8_t {
+        Arrow = 0, ///< «->0<-»
+        Net = 1,   ///< «NET»
+        K = 2,     ///< «k»
+        G = 3,     ///< «g»
+    };
+
+    /**
+     * @brief Конструктор: инициализация GPIO (PB3..PB5) и установка шины в idle.
+     *
+     * Не вызывает Init() — команды HT1621 отправляются отдельно из hardware_init().
+     */
     HT1621B();
 
     /**
-     * Немедленно выводит содержимое RAM на дисплей (используя функцию WriteData)
-     */
-    void Flush();
-
-    /**
-     * @brief Полностью очищает RAM
-     * @param flushNow Немедленно выводит результат операции на дисплей
-     */
-    void FullClear(bool flushNow = false);
-
-    /**
-     * @brief Очищает область RAM, соответствующую только сегментным индикаторам
-     * @param flushNow Немедленно выводит результат операции на дисплей
-     */
-    void ClearSegArea(bool flushNow = false);
-
-    /**
-     * @brief Инициализация дисплея
+     * @brief Инициализация контроллера HT1621B.
+     *
+     * Последовательность: RC256K → Bias 1/2 (4 commons) → SysEn → LcdOn → FullClear.
      */
     void Init();
 
     /**
-     * @brief Отображает десятичный разделитель в заданной позиции
-     * @param position Позиция десятичного разделителя [5..0] (0 - правый разряд, 5 - левый)
-     * @param enable Отобразить или погасить разделитель
-     * @param flushNow Немедленно выводит результат операции на дисплей
+     * @brief Немедленно вывести изменённые ячейки VRAM на дисплей.
+     *
+     * Рекомендуется вызывать один раз после серии Show* с flushNow = false.
+     */
+    void Flush();
+
+    /**
+     * @brief Полностью очистить VRAM (все адреса → 0).
+     * @param flushNow Немедленно вывести результат на дисплей
+     */
+    void FullClear(bool flushNow = false);
+
+    /**
+     * @brief Очистить область VRAM, соответствующую только сегментным индикаторам.
+     *
+     * Адреса 1..24 (6 разрядов × 4 ниббла). Адрес 0x17 очищается частично:
+     * сбрасывается только бит DP, иконка «k» (бит 1) сохраняется.
+     *
+     * @param flushNow Немедленно вывести результат на дисплей
+     */
+    void ClearSegArea(bool flushNow = false);
+
+    /**
+     * @brief Отобразить или погасить десятичный разделитель.
+     * @param position Позиция разделителя [1..5] (0 недопустима — нет точки справа от младшего разряда)
+     * @param enable   true — зажечь, false — погасить
+     * @param flushNow Немедленно вывести результат на дисплей
      */
     void ShowDot(uint8_t position, bool enable, bool flushNow = false);
 
     /**
-     * @brief Позволяет отображать или скрывать специальные символы на дисплее
-     * @param type [0..3] - индекс массива m_specials
-     *             0 - "->0<-"
-     *             1 - "NET"
-     *             2 - "k"
-     *             3 - "g"
-     * @param enable Отобразить или погасить спецсимвол
-     * @param flushNow Немедленно выводит результат операции на дисплей
+     * @brief Отобразить или скрыть специальный символ (иконку) на дисплее.
+     * @param type     Иконка (см. HT1621B::Special)
+     * @param enable   true — показать, false — скрыть
+     * @param flushNow Немедленно вывести результат на дисплей
      */
-    void ShowSpecial(uint8_t type, bool enable, bool flushNow = false);
+    void ShowSpecial(Special type, bool enable, bool flushNow = false);
 
     /**
-     * @brief Заполняет все биты RAM единицами
-     * @param flushNow Немедленно выводит результат операции на дисплей
+     * @brief Заполнить все ячейки VRAM значением 0x0F (все сегменты включены).
+     * @param flushNow Немедленно вывести результат на дисплей
      */
     void ShowFull(bool flushNow = false);
 
     /**
-     * @brief Вывод предопределенного символа на заданной позиции дисплея
-     * @param position Позиция символа [5..0] (0 - правый разряд, 5 - левый)
-     * @param c Символ из набора m_letters
-     * @param flushNow Немедленно выводит результат операции на дисплей
+     * @brief Вывести предопределённую букву на заданной позиции дисплея.
+     * @param position Позиция символа [0..5]: 0 — правый, 5 — левый
+     * @param c        Символ из набора kLetterGlyphs (см. letterIndex)
+     * @param flushNow Немедленно вывести результат на дисплей
      */
     void ShowLetter(uint8_t position, char c, bool flushNow = false);
 
     /**
-     * @brief Выводит строку из m_digits и m_letters (не более 6 символов) на дисплей
-     * @param str Строка, содержащая m_digits, m_letters или пробел
-     * @param flushNow Немедленно выводит результат операции на дисплей
+     * @brief Вывести строку из цифр и букв (не более 6 символов) на дисплей.
+     *
+     * Перед выводом очищает сегментную область (ClearSegArea), не трогая иконки.
+     * Строка выводится справа налево: первый символ str — левый разряд.
+     *
+     * @param str      Строка: цифры '0'..'9', буквы из kLetterGlyphs, пробел
+     * @param flushNow Немедленно вывести результат на дисплей
      */
     void ShowString(const char *str, bool flushNow = false);
 
     /**
-     * @brief Выводит целое число на дисплей (не более 6 цифр)
-     * @param value Выводимое число
-     * @param flushNow Немедленно выводит результат операции на дисплей
+     * @brief Вывести целое число на дисплей (не более 6 цифр, с минусом — 5).
+     * @param value    Выводимое число; при переполнении показывается «------»
+     * @param flushNow Немедленно вывести результат на дисплей
      */
     void ShowInt(int value, bool flushNow = false);
 
     /**
-     * @brief Выводит цифру на заданной позиции дисплея
-     * @param position Позиция цифры [5..0] (0 - правый разряд, 5 - левый)
-     * @param digit Цифра 0 - 9
-     * @param withDot Выводит десятичный разделитель
-     * @param flushNow Немедленно выводит результат операции на дисплей
+     * @brief Вывести одну цифру на заданной позиции дисплея.
+     * @param position Позиция [0..5]: 0 — правый разряд, 5 — левый
+     * @param digit    Цифра 0..9
+     * @param withDot  true — зажечь десятичную точку слева от разряда
+     * @param flushNow Немедленно вывести результат на дисплей
      */
     void ShowDigit(uint8_t position, uint8_t digit, bool withDot, bool flushNow = false);
 
     /**
-     * @brief Отображает символ уровня заряда на дисплее
-     * @param level Уровень заряда [0..3]
-     * @param flushNow Немедленно выводит результат операции на дисплей
+     * @brief Отобразить символ уровня заряда батареи.
+     * @param level    Уровень [0..3]; значения > 3 трактуются как 3
+     * @param flushNow Немедленно вывести результат на дисплей
      */
     void ShowChargeLevel(uint8_t level, bool flushNow = false);
 
     /**
-     * @brief Выводит дату на дисплей в формате xx.xx.xx
-     * @param day День [1..31]
-     * @param month Месяц [1..12]
-     * @param year Год [00..99]
-     * @param flushNow Немедленно выводит результат операции на дисплей
+     * @brief Вывести дату на дисплей в формате DD.MM.YY.
+     * @param day      День [1..31]
+     * @param month    Месяц [1..12]
+     * @param year     Год [00..99]
+     * @param flushNow Немедленно вывести результат на дисплей
      */
     void ShowDate(uint8_t day, uint8_t month, uint8_t year, bool flushNow = false);
 };
