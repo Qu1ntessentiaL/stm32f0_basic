@@ -6,7 +6,6 @@ using namespace RccDriver;
 
 void hardware_init(App& app) {
     InitMax48MHz();
-    IWDG_Init();
     SysTick_Config(SYSTEM_CLOCK_HZ / 1000);
 
     // UART1
@@ -101,4 +100,8 @@ void hardware_init(App& app) {
     // EventQueue (critical for app_loop - must be initialized here)
     static EventQueue queue;
     app.queue = &queue;
+}
+
+void watchdog_start() {
+    IWDG_Init();
 }

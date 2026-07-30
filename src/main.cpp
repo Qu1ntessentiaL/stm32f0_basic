@@ -15,6 +15,7 @@ int main() {
     __enable_irq();          // Включаем прерывания перед services_init (нужны для UART TX)
 
     services_init(app);   // Инициализация сервисов более высокого уровня
+    watchdog_start();        // После init: IWDG нельзя остановить
 
     while (true) {
         app_loop(app);
