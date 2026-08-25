@@ -13,7 +13,7 @@
  * @tparam TxBuffSize Размер кольцевого буфера для передачи
  * @tparam RxBuffSize Размер кольцевого буфера для приема
  */
-template<uint32_t Baudrate = 115200, size_t TxBuffSize = 64, size_t RxBuffSize = 32>
+template<uint32_t Baudrate = 115200, size_t TxBuffSize = 128, size_t RxBuffSize = 32>
 class UsartDriver {
     etl::circular_buffer<uint8_t, TxBuffSize> m_tx_buf; ///< Кольцевой буфер для передачи
     etl::circular_buffer<uint8_t, RxBuffSize> m_rx_buf; ///< Кольцевой буфер для приема
@@ -323,16 +323,16 @@ public:
     }
 
     /**
-     * @brief Ждать пока все данные в буфере передачи отправятся
-     * @note Это неблокирующая операция - просто ждет пока буфер опустеет
+     * @brief Дождаться завершения передачи всех данных
+     * @note Ожидает и опустошения программного буфера, и флага TC USART.
      */
     bool flush(uint32_t timeoutMs = 100) {
         const uint32_t deadline = RccDriver::GetMsTicks() + timeoutMs;
-        while (!m_tx_buf.empty() &&
+        while ((!m_tx_buf.empty() || !(USART1->ISR & USART_ISR_TC)) &&
                static_cast<int32_t>(RccDriver::GetMsTicks() - deadline) < 0) {
-            // Буфер заполняется в main(), опустошается в IRQ.
+            // Буфер опустошается в IRQ, TC подтверждает передачу последнего байта.
         }
-        return m_tx_buf.empty();
+        return m_tx_buf.empty() && ((USART1->ISR & USART_ISR_TC) != 0U);
     }
 
     /**

@@ -37,7 +37,8 @@ void services_init(App &app) {
 
     if (app.uart) {
         print_fw_info(app.uart);
-        app.uart->flush();  // Wait for all TX data to be sent before continuing
+        app.uart->flush();
         app.uart->write_str("System ready.\r\n");
+        app.uart->flush();
     }
 }
