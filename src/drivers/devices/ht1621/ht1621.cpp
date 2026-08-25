@@ -202,7 +202,9 @@ void HT1621B::flushDirty() {
         }
 
         writeDataBurst(start, end);
-        dirty &= ~((2u << end) - (1u << start));
+        const uint32_t throughEnd = (end == 31) ? UINT32_MAX : ((1u << (end + 1)) - 1u);
+        const uint32_t beforeStart = (start == 0) ? 0u : ((1u << start) - 1u);
+        dirty &= ~(throughEnd & ~beforeStart);
     }
 
     m_dirty = 0;
@@ -363,7 +365,7 @@ void HT1621B::ShowString(const char *str, bool flushNow) {
     ClearSegArea(false);
 
     uint8_t len = 0;
-    while (str[len] && len < kDigitCount) ++len;
+    while (len < kDigitCount && str[len]) ++len;
 
     for (uint8_t i = 0; i < len; ++i)
         showChar(i, str[len - 1 - i]);

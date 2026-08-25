@@ -32,6 +32,7 @@ public:
 
     bool push(const Event &ev) {
         if (m_queue.full()) {
+            ++m_dropped;
             return false;
         }
         m_queue.push(ev);
@@ -47,6 +48,9 @@ public:
         return ev;
     }
 
+    uint32_t dropped_count() const { return m_dropped; }
+
 private:
     etl::circular_buffer<Event, MaxEvents> m_queue;
+    uint32_t m_dropped = 0;
 };

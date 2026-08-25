@@ -8,6 +8,12 @@
 #include <optional>
 
 void app_loop(App &app) {
+    if (!app.sensor || !app.buttons || !app.queue || !app.ctrl ||
+        !app.beep || !app.tim17) {
+        RccDriver::IWDG_Reload();
+        return;
+    }
+
     // Low-level polling
     app.sensor->poll();
     app.buttons->poll(*app.queue);
@@ -28,7 +34,9 @@ void app_loop(App &app) {
         }
 
         if (app.uart && app.queue && app.uart->has_data()) {
-            while (app.uart->has_data()) {
+            constexpr uint8_t MaxUartEventsPerLoop = 8;
+            uint8_t processed = 0;
+            while (app.uart->has_data() && processed++ < MaxUartEventsPerLoop) {
                 int byte = app.uart->read_byte();
                 if (byte < 0) break;
 

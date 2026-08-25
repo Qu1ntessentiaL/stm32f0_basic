@@ -24,6 +24,9 @@ static constexpr uint32_t PCLK1_HZ = 48'000'000;
 /// I2C скорость (Hz)
 static constexpr uint32_t I2C_SPEED_HZ = 100'000;
 
+/// Временное отключение UART для локализации зависаний в USART IRQ.
+static constexpr bool UART_DIAGNOSTIC_ENABLED = true;
+
 /// GPIO пины
 namespace GPIO_PINS {
     static constexpr uint8_t USART_TX = 9;      ///< USART TX на PA9

@@ -33,9 +33,11 @@ void services_init(App &app) {
 
     static Controller ctrl(app.display, app.beep, app.heater);
     app.ctrl = &ctrl;
+    ctrl.init();
 
-    print_fw_info(app.uart);
-    app.uart->flush();  // Wait for all TX data to be sent before continuing
-    
-    app.uart->write_str("System ready.\r\n");
+    if (app.uart) {
+        print_fw_info(app.uart);
+        app.uart->flush();  // Wait for all TX data to be sent before continuing
+        app.uart->write_str("System ready.\r\n");
+    }
 }

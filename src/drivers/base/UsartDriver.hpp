@@ -5,6 +5,7 @@
 
 #include "stm32f0xx.h"
 #include "GpioDriver.hpp"
+#include "RccDriver.hpp"
 
 /**
  * @brief Драйвер USART с неблокирующей передачей и приемом через кольцевые буферы
@@ -45,11 +46,15 @@ class UsartDriver {
      * @note Включает прерывание TXE при успешной записи
      */
     bool tx_enqueue_byte(uint8_t byte) {
+        const uint32_t primask = __get_PRIMASK();
+        __disable_irq();
         if (m_tx_buf.full()) {
+            __set_PRIMASK(primask);
             return false;
         }
         m_tx_buf.push(byte);
         USART1->CR1 |= USART_CR1_TXEIE;
+        __set_PRIMASK(primask);
         return true;
     }
 
@@ -62,7 +67,9 @@ public:
         GpioDriver rx(GPIOA, 10);
         GpioDriver tx(GPIOA, 9);
 
-        rx.Init(GpioDriver::Mode::Alternate);
+        rx.Init(GpioDriver::Mode::Alternate,
+                GpioDriver::OutType::PushPull,
+                GpioDriver::Pull::Up);
         rx.SetAlternateFunction(1);
 
         tx.Init(GpioDriver::Mode::Alternate);
@@ -73,6 +80,10 @@ public:
         RCC->CFGR3 &= ~RCC_CFGR3_USART1SW;
         RCC->CFGR3 |= RCC_CFGR3_USART1SW_0; // SYSCLK
 
+        USART1->CR1 = 0;
+        USART1->ICR = USART_ICR_PECF | USART_ICR_FECF | USART_ICR_NCF |
+                      USART_ICR_ORECF | USART_ICR_IDLECF;
+        (void)USART1->RDR;
         USART1->BRR = (apb_clk_hz + Baudrate / 2) / Baudrate;
         USART1->CR1 = USART_CR1_RE | USART_CR1_TE;
         USART1->CR2 = 0;
@@ -126,10 +137,12 @@ public:
             buf.push_back('0');
         } else {
             int is_negative = 0;
-            unsigned int uvalue = value;
+            unsigned int uvalue;
             if (value < 0) {
                 is_negative = 1;
-                uvalue = -value;
+                uvalue = static_cast<unsigned int>(-(value + 1)) + 1u;
+            } else {
+                uvalue = static_cast<unsigned int>(value);
             }
 
             etl::string<7> tmp;
@@ -155,7 +168,8 @@ public:
      */
     void handleIRQ() {
         // Обработка передачи (TXE - Transmit Data Register Empty)
-        if (USART1->ISR & USART_ISR_TXE) {
+        if ((USART1->CR1 & USART_CR1_TXEIE) &&
+            (USART1->ISR & USART_ISR_TXE)) {
             if (!m_tx_buf.empty()) {
                 USART1->TDR = m_tx_buf.front();
                 m_tx_buf.pop();
@@ -169,17 +183,15 @@ public:
         // Важно: проверяем ORE перед RXNE, так как чтение RDR очищает оба флага
         uint32_t isr = USART1->ISR;
         
-        // Обработка ошибки переполнения (ORE - Overrun Error)
-        // ORE возникает когда новые данные приходят до чтения предыдущих из RDR
-        if (isr & USART_ISR_ORE) {
-            // Читаем RDR для очистки флагов ORE и RXNE
-            // Данные теряются на уровне железа (не успели прочитать вовремя)
-            volatile uint8_t dummy = static_cast<uint8_t>(USART1->RDR);
-            (void)dummy;
+        const uint32_t errors = isr & (USART_ISR_ORE | USART_ISR_FE |
+                                       USART_ISR_NE | USART_ISR_PE);
+        if (errors) {
+            USART1->ICR = USART_ICR_ORECF | USART_ICR_FECF |
+                          USART_ICR_NCF | USART_ICR_PECF;
+            if (isr & USART_ISR_RXNE)
+                (void)USART1->RDR;
             ++m_rx_overrun_count;
         }
-        // Обработка приема (RXNE - Read Data Register Not Empty)
-        // Проверяем только если ORE не был установлен (чтение RDR выше очистило бы RXNE)
         else if (isr & USART_ISR_RXNE) {
             // Читаем данные из регистра (это также очищает флаг RXNE)
             uint8_t byte = static_cast<uint8_t>(USART1->RDR);
@@ -233,11 +245,15 @@ public:
      * @return Прочитанный байт или -1 если буфер пуст
      */
     int read_byte() {
+        const uint32_t primask = __get_PRIMASK();
+        __disable_irq();
         if (m_rx_buf.empty()) {
+            __set_PRIMASK(primask);
             return -1;
         }
         uint8_t byte = m_rx_buf.front();
         m_rx_buf.pop();
+        __set_PRIMASK(primask);
         return static_cast<int>(byte);
     }
 
@@ -310,11 +326,13 @@ public:
      * @brief Ждать пока все данные в буфере передачи отправятся
      * @note Это неблокирующая операция - просто ждет пока буфер опустеет
      */
-    void flush() {
-        // Wait for TX buffer to be empty (all data sent)
-        while (!m_tx_buf.empty()) {
-            // Spin-wait: буфер заполняется в main(), опустошается в IRQ
+    bool flush(uint32_t timeoutMs = 100) {
+        const uint32_t deadline = RccDriver::GetMsTicks() + timeoutMs;
+        while (!m_tx_buf.empty() &&
+               static_cast<int32_t>(RccDriver::GetMsTicks() - deadline) < 0) {
+            // Буфер заполняется в main(), опустошается в IRQ.
         }
+        return m_tx_buf.empty();
     }
 
     /**

@@ -142,11 +142,11 @@ void ds18b20_temp_ready(int16_t temp, uint32_t t) {
 void ds18b20_temp_ready(int16_t temp) {
 #endif
     if (temp == DS18B20::ErrorStatus::TEMP_ERROR_NO_SENSOR) { // No sensor detected error - enqueue error message
-        app.uart->write_str("DS18B20 error: no sensor detected.\r\n");
+        if (app.uart) app.uart->write_str("DS18B20 error: no sensor detected.\r\n");
     } else if (temp == DS18B20::ErrorStatus::TEMP_ERROR_CRC_FAIL) { // CRC check failed error - enqueue error message
-        app.uart->write_str("DS18B20 error: CRC check failed.\r\n");
+        if (app.uart) app.uart->write_str("DS18B20 error: CRC check failed.\r\n");
     } else if (temp == DS18B20::ErrorStatus::TEMP_ERROR_GENERIC) { // Generic error - enqueue error message
-        app.uart->write_str("DS18B20 error: generic failure.\r\n");
+        if (app.uart) app.uart->write_str("DS18B20 error: generic failure.\r\n");
     } else {                                 // Valid temperature reading - format and display
         int whole = temp / 10;               // Get whole degrees (temp is in tenths)
         int frac = temp % 10;                // Get fractional part (tenths)
@@ -334,7 +334,9 @@ void DS18B20::read_data() {
     DMA1_Channel3->CPAR = (uint32_t) &TIM1->CCR2;                       // DMA destination: capture register
     DMA1_Channel3->CMAR = (uint32_t) m_ctx.pulse;                        // DMA source: pulse duration buffer
     DMA1_Channel3->CNDTR = DS18B20_SCRATCHPAD_BITS;                    // Number of transfers (72 bits)
-    DMA1_Channel3->CCR = DMA_CCR_MINC | DMA_CCR_PSIZE_0 | DMA_CCR_EN;  // Enable DMA with memory increment
+    // Pulse durations are stored as bytes (the maximum slot is 62 us).
+    // Keep both DMA sides 8-bit; a half-word transfer would overrun pulse[].
+    DMA1_Channel3->CCR = DMA_CCR_MINC | DMA_CCR_EN;
     TIM1->CR1 = TIM_CR1_OPM | TIM_CR1_CEN;   // Start timer in one-pulse mode
 }
 
@@ -506,6 +508,8 @@ void DS18B20::init() {
     // У PA8 альтернативные функции задаются в AFRH (пины 8..15)
     GPIOA->AFR[1] &= ~(0xFU << ((8 - 8) * 4)); // очистить 4 бита
     GPIOA->AFR[1] |= (0x2U << ((8 - 8) * 4)); // установить AF2
+
+    m_ctx.current_state = FsmStates::IDLE;
 }
 
 /**

@@ -10,8 +10,10 @@ void hardware_init(App& app) {
 
     // UART1
     static UsartDriver<> uart1;
-    uart1.Init(SYSTEM_CLOCK_HZ);
-    app.uart = &uart1;
+    if (UART_DIAGNOSTIC_ENABLED) {
+        uart1.Init(SYSTEM_CLOCK_HZ);
+        app.uart = &uart1;
+    }
 
     // I2C1
     static TwiDriver i2c1;

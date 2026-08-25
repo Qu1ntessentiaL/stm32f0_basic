@@ -68,7 +68,9 @@ void TwiDriver::init(uint32_t pclk1, uint32_t speedHz) {
     }
 
     I2C1->TIMINGR = timing;
-    I2C1->CR1 = I2C_CR1_TXIE | I2C_CR1_RXIE | I2C_CR1_TCIE | I2C_CR1_ERRIE | I2C_CR1_PE;
+    I2C1->ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF | I2C_ICR_BERRCF |
+                I2C_ICR_ARLOCF | I2C_ICR_OVRCF;
+    I2C1->CR1 = I2C_CR1_ERRIE | I2C_CR1_PE;
     NVIC_EnableIRQ(I2C1_IRQn);
 }
 
@@ -100,6 +102,7 @@ void TwiDriver::start_next() {
 
     uint8_t nbytes = m_ctx.req.tx_len ? m_ctx.req.tx_len : m_ctx.req.rx_len;
 
+    I2C1->CR1 |= I2C_CR1_TXIE | I2C_CR1_RXIE | I2C_CR1_TCIE;
     I2C1->CR2 =
         (m_ctx.req.address << 1) |
         (nbytes << I2C_CR2_NBYTES_Pos) |
@@ -112,8 +115,16 @@ void TwiDriver::start_next() {
 void TwiDriver::irq() {
     uint32_t isr = I2C1->ISR;
 
-    if (isr & (I2C_ISR_NACKF | I2C_ISR_BERR)) {
-        m_ctx.state = State::Error;
+    if (isr & (I2C_ISR_NACKF | I2C_ISR_BERR | I2C_ISR_ARLO |
+               I2C_ISR_OVR)) {
+        I2C1->ICR = I2C_ICR_NACKCF | I2C_ICR_BERRCF |
+                    I2C_ICR_ARLOCF | I2C_ICR_OVRCF | I2C_ICR_STOPCF;
+
+        if (m_ctx.state != State::Idle) {
+            I2C1->CR2 |= I2C_CR2_STOP;
+            finish(false);
+        }
+        return;
     }
 
     switch (m_ctx.state) {
@@ -175,8 +186,12 @@ void TwiDriver::tick_1ms() {
 
     if (m_ctx.timeout > 0) {
         m_ctx.timeout--;
-        if (m_ctx.timeout == 0)
-            m_ctx.state = State::Error;
+        if (m_ctx.timeout == 0) {
+            I2C1->CR2 |= I2C_CR2_STOP;
+            I2C1->ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF |
+                        I2C_ICR_BERRCF | I2C_ICR_ARLOCF | I2C_ICR_OVRCF;
+            finish(false);
+        }
     }
 }
 
@@ -187,6 +202,7 @@ void TwiDriver::finish(bool ok) {
         m_ctx.req.callback(ok);
 
     m_ctx.state = State::Idle;
+    I2C1->CR1 &= ~(I2C_CR1_TXIE | I2C_CR1_RXIE | I2C_CR1_TCIE);
     start_next();
 }
 
