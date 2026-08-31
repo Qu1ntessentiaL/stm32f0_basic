@@ -260,9 +260,9 @@ void Controller::displayCurrentTemperature() {
     displayTemperature('1', m_current);
 }
 
-/** Показать на индикаторе уставку (`t2`). */
+/** Показать на индикаторе уставку (`tt`). */
 void Controller::displaySetpointTemperature() {
-    displayTemperature('2', m_setpoint);
+    displayTemperature('t', m_setpoint);
 }
 
 /** Универсальный вывод значения на индикатор HT1621. */
@@ -327,5 +327,10 @@ bool Controller::timeReached(uint32_t now, uint32_t deadline) {
  * расчёт PID-регулятору.
  */
 int Controller::computeHeatingPower(uint32_t dtMs) {
+    // Если управление нагревателем выключено в config.h, PID не считаем вовсе:
+    // ветка ниже отбрасывается компилятором, а m_heater у нас в любом случае nullptr.
+    if constexpr (!HEATER_CONTROL_ENABLED) {
+        return 0;
+    }
     return m_pid.update(m_setpoint, m_current, dtMs);
 }

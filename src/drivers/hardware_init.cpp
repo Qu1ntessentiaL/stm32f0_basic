@@ -82,10 +82,12 @@ void hardware_init(App& app) {
     sensor.init();
     app.sensor = &sensor;
 
-    // PWM-driver for heater
-    static PwmDriver heater(TIM3, 1);
-    heater.Init(HEATER_PRESCALER, HEATER_ARR);
-    app.heater = &heater;
+    // PWM-driver for heater (полностью исключается из сборки, если выключен в config.h)
+    if constexpr (HEATER_CONTROL_ENABLED) {
+        static PwmDriver heater(TIM3, 1);
+        heater.Init(HEATER_PRESCALER, HEATER_ARR);
+        app.heater = &heater;
+    }
 
     // PWM-driver for buzzer
     static PwmDriver piezo(TIM14, 1);
