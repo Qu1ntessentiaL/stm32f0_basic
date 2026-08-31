@@ -9,6 +9,8 @@ find_program(NM arm-none-eabi-nm REQUIRED)
 # Function to add post-build commands
 function(add_firmware_post_build_commands TARGET_NAME)
 
+    set(SIZE_REPORT_FILE "${CMAKE_BINARY_DIR}/size_report.txt")
+
     # Generate HEX and BIN files
     add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E echo "Generating HEX and BIN files..."
@@ -23,8 +25,13 @@ function(add_firmware_post_build_commands TARGET_NAME)
             $<TARGET_FILE:${TARGET_NAME}>
             $<TARGET_FILE_BASE_NAME:${TARGET_NAME}>.bin
 
-        # Show size information
-        COMMAND ${SIZE} -A -x $<TARGET_FILE:${TARGET_NAME}>
+        # Подробный отчёт по секциям (включая .debug_*) -> в файл, не в консоль
+        COMMAND ${CMAKE_COMMAND} -E echo "=================================================" > ${SIZE_REPORT_FILE}
+        COMMAND ${CMAKE_COMMAND} -E echo "SECTION SIZE REPORT" >> ${SIZE_REPORT_FILE}
+        COMMAND ${CMAKE_COMMAND} -E echo "Target: ${TARGET_NAME} (${CMAKE_BUILD_TYPE})" >> ${SIZE_REPORT_FILE}
+        COMMAND ${CMAKE_COMMAND} -E echo "=================================================" >> ${SIZE_REPORT_FILE}
+        COMMAND ${SIZE} -A -x $<TARGET_FILE:${TARGET_NAME}> >> ${SIZE_REPORT_FILE}
+        COMMAND ${CMAKE_COMMAND} -E echo "Section size report: ${SIZE_REPORT_FILE}"
 
         # Generate disassembly
         COMMAND ${OBJDUMP} -d -S -M force-thumb -M reg-names-std

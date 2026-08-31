@@ -269,7 +269,7 @@ void Controller::displaySetpointTemperature() {
 void Controller::displayTemperature(char label, int value) {
     if (!m_display) return;
 
-    m_display->ClearSegArea(false);
+    m_display->ClearSegArea();
 
     // value уже в десятых долях градуса, ограничиваем диапазон
     int clamped = value;
@@ -300,8 +300,9 @@ void Controller::displayTemperature(char label, int value) {
     }
     text[5] = static_cast<char>('0' + frac);
 
-    m_display->ShowString(text, false);
-    m_display->ShowDot(1, true, true);
+    m_display->ShowString(text);
+    m_display->ShowDot(1, true);
+    m_display->Flush();
 }
 
 /** Проверить, не истёк ли таймаут отображения уставки. */

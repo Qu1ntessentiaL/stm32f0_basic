@@ -11,12 +11,18 @@ extern "C" void __assert_func(const char *file, int line, const char *func, cons
 }
 
 namespace std {
-    // Signature: __glibcxx_assert_fail(const char*, int, const char*, const char*)
-    void __glibcxx_assert_fail(const char *expr, int line, const char *file, const char *func) {
-        (void)expr;
-        (void)line;
+    // Сигнатура должна точно совпадать с объявлением в <bits/c++config.h>:
+    //   extern "C++" _GLIBCXX_NORETURN __attribute__((__cold__))
+    //   void __glibcxx_assert_fail(const char* file, int line,
+    //                              const char* function, const char* condition) noexcept;
+    // Без noexcept/[[noreturn]] компилятор считает это другой перегрузкой
+    // с несовпадающим exception specifier -> предупреждение -Wpedantic.
+    [[noreturn]] void __glibcxx_assert_fail(const char *file, int line,
+                                             const char *function, const char *condition) noexcept {
         (void)file;
-        (void)func;
+        (void)line;
+        (void)function;
+        (void)condition;
         abort();
     }
 }

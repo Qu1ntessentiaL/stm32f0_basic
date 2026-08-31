@@ -1,8 +1,27 @@
 #include "ht1621.hpp"
+#include "config.h"
 
 namespace {
-    // ~1 µs при 48 МГц (HT1621: min 1 µs на такт DATA/WR)
-    constexpr uint32_t kDelayUs = 48;
+    /** Минимальная длительность такта DATA/WR по datasheet HT1621 (мкс). */
+    constexpr uint32_t kBitDelayUs = 1;
+
+    /**
+     * @brief Настроить TIM16 как свободно бегущий счётчик 1 МГц (1 тик = 1 мкс).
+     *
+     * TIM16 больше не используется ни одним другим драйвером проекта, поэтому
+     * безопасно занять его целиком под источник точных микросекундных задержек.
+     * В отличие от подсчёта циклов CPU (__NOP() в цикле), это не зависит от
+     * уровня оптимизации сборки — Debug/Release/MinSizeRel дают одинаковый тайминг.
+     */
+    void initMicrosecondTimer() {
+        RCC->APB2ENR |= RCC_APB2ENR_TIM16EN;
+        TIM16->CR1 = 0;
+        TIM16->PSC = static_cast<uint16_t>(SYSTEM_CLOCK_HZ / 1'000'000u - 1u);
+        TIM16->ARR = 0xFFFFu;
+        TIM16->EGR = TIM_EGR_UG;
+        TIM16->CNT = 0;
+        TIM16->CR1 = TIM_CR1_CEN;
+    }
 
     enum Command : uint8_t {
         SysEn = 0x01,
@@ -71,6 +90,8 @@ namespace {
         {0x00, 0x01}, {0x00, 0x02}, {0x17, 0x02}, {0x19, 0x02},
     };
 
+    constexpr uint8_t kSpecialsCount = sizeof(kSpecials) / sizeof(kSpecials[0]);
+
     /** Маска сегментов: addr+3 делит ниббл с DP / иконкой "k". */
     constexpr uint8_t kGlyphMask(uint8_t rel) {
         return (rel == 3) ? 0x01u : 0x03u;
@@ -98,48 +119,40 @@ HT1621B::HT1621B() : m_cs_pin(GPIOB, 5),
     m_data_pin.Reset();
 }
 
-void HT1621B::delayCycles(uint32_t n) const {
-    while (n--) {
-        __NOP();
-    }
-}
-
 void HT1621B::delayUs(uint32_t us) const {
-    delayCycles(us * kDelayUs);
+    const auto start = static_cast<uint16_t>(TIM16->CNT);
+    while (static_cast<uint16_t>(static_cast<uint16_t>(TIM16->CNT) - start) < us) {}
 }
 
-__attribute__((noinline))
 void HT1621B::beginTransfer(bool isData) const {
     m_cs_pin.Set();
-    delayCycles(kDelayUs / 2);
+    delayUs(kBitDelayUs);
     m_cs_pin.Reset();
-    delayCycles(kDelayUs / 2);
+    delayUs(kBitDelayUs);
 
     writeBit(true);
     writeBit(false);
     writeBit(isData);
 }
 
-__attribute__((noinline))
 void HT1621B::endTransfer() const {
-    delayCycles(kDelayUs / 2);
+    delayUs(kBitDelayUs);
     m_cs_pin.Set();
-    delayCycles(kDelayUs / 2);
+    delayUs(kBitDelayUs);
 }
 
-__attribute__((noinline))
 void HT1621B::writeBit(bool bit) const {
     if (bit)
         m_data_pin.Set();
     else
         m_data_pin.Reset();
 
-    delayCycles(kDelayUs);
+    delayUs(kBitDelayUs);
 
     m_write_pin.Reset();
-    delayCycles(kDelayUs);
+    delayUs(kBitDelayUs);
     m_write_pin.Set();
-    delayCycles(kDelayUs / 2);
+    delayUs(kBitDelayUs);
 }
 
 void HT1621B::writeCommand(uint8_t cmd) {
@@ -185,7 +198,7 @@ void HT1621B::flushDirty() {
     uint32_t dirty = m_dirty;
     if (!dirty) return;
 
-    if (dirty == 0xFFFFFFFFu || __builtin_popcount(dirty) > 16) {
+    if (dirty == 0xFFFFFFFFu || __builtin_popcount(dirty) > kVramSize / 2) {
         flushAll();
         m_dirty = 0;
         return;
@@ -283,24 +296,24 @@ void HT1621B::Flush() {
     flushDirty();
 }
 
-void HT1621B::FullClear(bool flushNow) {
+void HT1621B::FullClear() {
     for (uint8_t i = 0; i < kVramSize; ++i)
         m_vram[i] = 0;
     m_dirty = 0xFFFFFFFFu;
-    if (flushNow) Flush();
 }
 
-void HT1621B::ClearSegArea(bool flushNow) {
+void HT1621B::ClearSegArea() {
     for (uint8_t i = 1; i <= kDigitCount * kSegsPerDigit; ++i) {
         if (i == kSharedNibbleAddr)
             clearBits(i, kSharedSegMask);
         else
             touch(i, 0);
     }
-    if (flushNow) Flush();
 }
 
 void HT1621B::Init() {
+    initMicrosecondTimer();
+
     writeCommand(RC256K);
     delayUs(kInitDelayUs);
     writeCommand(Bias12);
@@ -309,10 +322,11 @@ void HT1621B::Init() {
     delayUs(kInitDelayUs);
     writeCommand(LcdOn);
     delayUs(kInitDelayUs);
-    FullClear(true);
+    FullClear();
+    Flush();
 }
 
-void HT1621B::ShowDot(uint8_t position, bool enable, bool flushNow) {
+void HT1621B::ShowDot(uint8_t position, bool enable) {
     if (position == 0 || position >= kDigitCount) return;
 
     const uint8_t addr = kDotAddrs[5 - position];
@@ -320,61 +334,51 @@ void HT1621B::ShowDot(uint8_t position, bool enable, bool flushNow) {
         setBits(addr, kDotMask);
     else
         clearBits(addr, kDotMask);
-
-    if (flushNow) Flush();
 }
 
-void HT1621B::ShowSpecial(Special type, bool enable, bool flushNow) {
+void HT1621B::ShowSpecial(Special type, bool enable) {
     const uint8_t idx = static_cast<uint8_t>(type);
-    if (idx > 3) return;
+    if (idx >= kSpecialsCount) return;
 
     const auto &s = kSpecials[idx];
     if (enable)
         setBits(s.addr, s.mask);
     else
         clearBits(s.addr, s.mask);
-
-    if (flushNow) Flush();
 }
 
-void HT1621B::ShowDigit(uint8_t position, uint8_t digit, bool withDot, bool flushNow) {
+void HT1621B::ShowDigit(uint8_t position, uint8_t digit, bool withDot) {
     if (position >= kDigitCount || digit > 9) return;
 
     writeGlyph(digitBase(position), kDigitGlyphs[digit]);
 
     if (withDot && position > 0)
         setBits(kDotAddrs[5 - position], kDotMask);
-
-    if (flushNow) Flush();
 }
 
-void HT1621B::ShowFull(bool flushNow) {
+void HT1621B::ShowFull() {
     for (uint8_t i = 0; i < kVramSize; ++i)
         touch(i, 0x0F);
-    if (flushNow) Flush();
 }
 
-void HT1621B::ShowLetter(uint8_t position, char c, bool flushNow) {
+void HT1621B::ShowLetter(uint8_t position, char c) {
     showChar(position, c);
-    if (flushNow) Flush();
 }
 
-void HT1621B::ShowString(const char *str, bool flushNow) {
+void HT1621B::ShowString(const char *str) {
     if (!str) return;
 
-    ClearSegArea(false);
+    ClearSegArea();
 
     uint8_t len = 0;
     while (len < kDigitCount && str[len]) ++len;
 
     for (uint8_t i = 0; i < len; ++i)
         showChar(i, str[len - 1 - i]);
-
-    if (flushNow) Flush();
 }
 
-void HT1621B::ShowInt(int value, bool flushNow) {
-    ClearSegArea(false);
+void HT1621B::ShowInt(int value) {
+    ClearSegArea();
 
     const bool negative = value < 0;
     unsigned mag = negative
@@ -393,7 +397,6 @@ void HT1621B::ShowInt(int value, bool flushNow) {
     if (digits > maxDigits) {
         for (uint8_t i = 0; i < kDigitCount; ++i)
             writeGlyph(digitBase(i), kLetterGlyphs[kGlyphDash]);
-        if (flushNow) Flush();
         return;
     }
 
@@ -407,11 +410,9 @@ void HT1621B::ShowInt(int value, bool flushNow) {
 
     if (negative && pos < kDigitCount)
         writeGlyph(digitBase(pos), kLetterGlyphs[kGlyphDash]);
-
-    if (flushNow) Flush();
 }
 
-void HT1621B::ShowChargeLevel(uint8_t level, bool flushNow) {
+void HT1621B::ShowChargeLevel(uint8_t level) {
     if (level > 3) level = 3;
 
     for (uint8_t i = 0; i < 4; ++i) {
@@ -421,11 +422,9 @@ void HT1621B::ShowChargeLevel(uint8_t level, bool flushNow) {
         else
             clearBits(s.addr, s.mask);
     }
-
-    if (flushNow) Flush();
 }
 
-void HT1621B::ShowDate(uint8_t day, uint8_t month, uint8_t year, bool flushNow) {
+void HT1621B::ShowDate(uint8_t day, uint8_t month, uint8_t year) {
     day %= 100;
     month %= 100;
     year %= 100;
@@ -433,7 +432,7 @@ void HT1621B::ShowDate(uint8_t day, uint8_t month, uint8_t year, bool flushNow) 
     if (day == 0 || day > 31 || month == 0 || month > 12)
         return;
 
-    ClearSegArea(false);
+    ClearSegArea();
 
     const uint8_t digits[6] = {
         static_cast<uint8_t>(year % 10),
@@ -449,6 +448,4 @@ void HT1621B::ShowDate(uint8_t day, uint8_t month, uint8_t year, bool flushNow) 
         if (pos == 2 || pos == 4)
             setBits(kDotAddrs[5 - pos], kDotMask);
     }
-
-    if (flushNow) Flush();
 }

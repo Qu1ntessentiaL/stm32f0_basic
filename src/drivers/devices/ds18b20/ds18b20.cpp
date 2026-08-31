@@ -148,7 +148,7 @@ void ds18b20_temp_ready(int16_t temp) {
     } else if (temp == DS18B20::ErrorStatus::TEMP_ERROR_GENERIC) { // Generic error - enqueue error message
         if (app.uart) app.uart->write_str("DS18B20 error: generic failure.\r\n");
     } else {                                 // Valid temperature reading - format and display
-        int whole = temp / 10;               // Get whole degrees (temp is in tenths)
+        __unused int whole = temp / 10;      // Get whole degrees (temp is in tenths)
         int frac = temp % 10;                // Get fractional part (tenths)
         if (frac < 0) frac = -frac;          // Ensure fractional part is positive
 #if defined PRINT_TEMP

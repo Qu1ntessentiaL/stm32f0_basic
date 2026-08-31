@@ -18,6 +18,12 @@
  * Обновление экрана двухфазное:
  *  1. Высокоуровневые Show* меняют локальный m_vram и помечают адреса в m_dirty.
  *  2. Flush() отправляет на HT1621 только изменённые (или все) адреса.
+ *     Show*-методы больше не принимают флаг "flushNow" — вызывающий код сам
+ *     решает, когда закончилась пачка изменений, и вызывает Flush() один раз.
+ *
+ * Тайминги DATA/WR/CS формируются аппаратным таймером TIM16 (свободно бегущий
+ * счётчик 1 МГц, см. delayUs()), а не подсчётом циклов CPU — поэтому не зависят
+ * от уровня оптимизации сборки (Debug/Release/MinSizeRel дают одинаковый результат).
  */
 class HT1621B {
     /** Размер RAM контроллера HT1621B (32 × 4 бита). */
@@ -35,12 +41,6 @@ class HT1621B {
     GpioDriver m_cs_pin;   ///< CS  (PB5)
     GpioDriver m_write_pin; ///< WR  (PB4)
     GpioDriver m_data_pin;  ///< DATA (PB3)
-
-    /**
-     * @brief Программная задержка в циклах CPU.
-     * @param n Число итераций __NOP (калибровано под 48 МГц)
-     */
-    void delayCycles(uint32_t n) const;
 
     /**
      * @brief Запись одного бита данных или команды в контроллер HT1621B.
@@ -124,7 +124,11 @@ class HT1621B {
     /** @brief Завершить транзакцию (CS↑). */
     void endTransfer() const;
 
-    /** @brief Задержка в микросекундах (калибровка под 48 МГц). */
+    /**
+     * @brief Задержка в микросекундах на аппаратном таймере TIM16.
+     * @note Не зависит от тактовой частоты CPU и уровня оптимизации сборки —
+     *       опрашивает регистр CNT свободно бегущего таймера 1 МГц.
+     */
     void delayUs(uint32_t us) const;
 
     /**
@@ -162,55 +166,49 @@ public:
     /**
      * @brief Немедленно вывести изменённые ячейки VRAM на дисплей.
      *
-     * Рекомендуется вызывать один раз после серии Show* с flushNow = false.
+     * Show*-методы только помечают изменения в m_dirty; вызовите Flush() один
+     * раз после серии Show*, чтобы отправить их на контроллер.
      */
     void Flush();
 
-    /**
-     * @brief Полностью очистить VRAM (все адреса → 0).
-     * @param flushNow Немедленно вывести результат на дисплей
-     */
-    void FullClear(bool flushNow = false);
+    /** @brief Полностью очистить VRAM (все адреса → 0). Не забудьте Flush(). */
+    void FullClear();
 
     /**
      * @brief Очистить область VRAM, соответствующую только сегментным индикаторам.
      *
      * Адреса 1..24 (6 разрядов × 4 ниббла). Адрес 0x17 очищается частично:
      * сбрасывается только бит DP, иконка «k» (бит 1) сохраняется.
-     *
-     * @param flushNow Немедленно вывести результат на дисплей
+     * Не забудьте Flush().
      */
-    void ClearSegArea(bool flushNow = false);
+    void ClearSegArea();
 
     /**
      * @brief Отобразить или погасить десятичный разделитель.
      * @param position Позиция разделителя [1..5] (0 недопустима — нет точки справа от младшего разряда)
      * @param enable   true — зажечь, false — погасить
-     * @param flushNow Немедленно вывести результат на дисплей
+     * @note Не забудьте Flush().
      */
-    void ShowDot(uint8_t position, bool enable, bool flushNow = false);
+    void ShowDot(uint8_t position, bool enable);
 
     /**
      * @brief Отобразить или скрыть специальный символ (иконку) на дисплее.
      * @param type     Иконка (см. HT1621B::Special)
      * @param enable   true — показать, false — скрыть
-     * @param flushNow Немедленно вывести результат на дисплей
+     * @note Не забудьте Flush().
      */
-    void ShowSpecial(Special type, bool enable, bool flushNow = false);
+    void ShowSpecial(Special type, bool enable);
 
-    /**
-     * @brief Заполнить все ячейки VRAM значением 0x0F (все сегменты включены).
-     * @param flushNow Немедленно вывести результат на дисплей
-     */
-    void ShowFull(bool flushNow = false);
+    /** @brief Заполнить все ячейки VRAM значением 0x0F (все сегменты включены). Не забудьте Flush(). */
+    void ShowFull();
 
     /**
      * @brief Вывести предопределённую букву на заданной позиции дисплея.
      * @param position Позиция символа [0..5]: 0 — правый, 5 — левый
      * @param c        Символ из набора kLetterGlyphs (см. letterIndex)
-     * @param flushNow Немедленно вывести результат на дисплей
+     * @note Не забудьте Flush().
      */
-    void ShowLetter(uint8_t position, char c, bool flushNow = false);
+    void ShowLetter(uint8_t position, char c);
 
     /**
      * @brief Вывести строку из цифр и букв (не более 6 символов) на дисплей.
@@ -219,39 +217,39 @@ public:
      * Строка выводится справа налево: первый символ str — левый разряд.
      *
      * @param str      Строка: цифры '0'..'9', буквы из kLetterGlyphs, пробел
-     * @param flushNow Немедленно вывести результат на дисплей
+     * @note Не забудьте Flush().
      */
-    void ShowString(const char *str, bool flushNow = false);
+    void ShowString(const char *str);
 
     /**
      * @brief Вывести целое число на дисплей (не более 6 цифр, с минусом — 5).
      * @param value    Выводимое число; при переполнении показывается «------»
-     * @param flushNow Немедленно вывести результат на дисплей
+     * @note Не забудьте Flush().
      */
-    void ShowInt(int value, bool flushNow = false);
+    void ShowInt(int value);
 
     /**
      * @brief Вывести одну цифру на заданной позиции дисплея.
      * @param position Позиция [0..5]: 0 — правый разряд, 5 — левый
      * @param digit    Цифра 0..9
      * @param withDot  true — зажечь десятичную точку слева от разряда
-     * @param flushNow Немедленно вывести результат на дисплей
+     * @note Не забудьте Flush().
      */
-    void ShowDigit(uint8_t position, uint8_t digit, bool withDot, bool flushNow = false);
+    void ShowDigit(uint8_t position, uint8_t digit, bool withDot);
 
     /**
      * @brief Отобразить символ уровня заряда батареи.
      * @param level    Уровень [0..3]; значения > 3 трактуются как 3
-     * @param flushNow Немедленно вывести результат на дисплей
+     * @note Не забудьте Flush().
      */
-    void ShowChargeLevel(uint8_t level, bool flushNow = false);
+    void ShowChargeLevel(uint8_t level);
 
     /**
      * @brief Вывести дату на дисплей в формате DD.MM.YY.
      * @param day      День [1..31]
      * @param month    Месяц [1..12]
      * @param year     Год [00..99]
-     * @param flushNow Немедленно вывести результат на дисплей
+     * @note Не забудьте Flush().
      */
-    void ShowDate(uint8_t day, uint8_t month, uint8_t year, bool flushNow = false);
+    void ShowDate(uint8_t day, uint8_t month, uint8_t year);
 };
