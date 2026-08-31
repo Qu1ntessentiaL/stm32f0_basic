@@ -9,6 +9,7 @@
 #include "ButtonsManager.hpp"
 #include "Controller.hpp"
 #include "Event.hpp"
+#include "MelodyPlayer.hpp"
 
 /**
  *   Контекст приложения (Dependency Injection Container)
@@ -32,5 +33,6 @@ struct App {
     // Application-level services
     EventQueue      *queue = nullptr;
     BeepManager     *beep = nullptr;
+    MelodyPlayer    *melody = nullptr;
     Controller      *ctrl = nullptr;
 };

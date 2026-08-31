@@ -31,6 +31,9 @@ void services_init(App &app) {
     static BeepManager beep(app.piezo);
     app.beep = &beep;
 
+    static MelodyPlayer melody(app.piezo);
+    app.melody = &melody;
+
     static Controller ctrl(app.display, app.beep, app.heater);
     app.ctrl = &ctrl;
     ctrl.init();

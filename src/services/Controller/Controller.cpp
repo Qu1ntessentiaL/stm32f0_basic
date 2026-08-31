@@ -41,11 +41,13 @@ const Controller::Transition Controller::transitions[] = {
         {EventType::ButtonS2,         Controller::State::Any,     &Controller::guardClickS2, &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
         {EventType::ButtonS2,         Controller::State::Any,     &Controller::guardHeld,    &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
 
-        // Звук при нажатии на кнопки
+        // Звук при нажатии на кнопки.
+        // ButtonS4 сюда не входит: она проигрывает мелодию (MelodyPlayer,
+        // см. event_dispatcher.cpp) и сама владеет пьезо на время мелодии -
+        // короткий "клик" от actionBeep перебил бы её первую ноту.
         {EventType::ButtonS1,         Controller::State::Any,     nullptr,                   &Controller::actionBeep,              Controller::State::Any},
         {EventType::ButtonS2,         Controller::State::Any,     nullptr,                   &Controller::actionBeep,              Controller::State::Any},
         {EventType::ButtonS3,         Controller::State::Any,     nullptr,                   &Controller::actionBeep,              Controller::State::Any},
-        {EventType::ButtonS4,         Controller::State::Any,     nullptr,                   &Controller::actionBeep,              Controller::State::Any},
         /// Переходы, содержащие wildcard по типу события
 };
 

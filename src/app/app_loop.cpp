@@ -9,7 +9,7 @@
 
 void app_loop(App &app) {
     if (!app.sensor || !app.buttons || !app.queue || !app.ctrl ||
-        !app.beep || !app.tim17) {
+        !app.beep || !app.melody || !app.tim17) {
         RccDriver::IWDG_Reload();
         return;
     }
@@ -19,6 +19,7 @@ void app_loop(App &app) {
     app.buttons->poll(*app.queue);
     app.ctrl->poll();
     app.beep->poll();
+    app.melody->poll();
 
     // Дублирование действий кнопок через UART (клавиши '1'..'4')
     // Добавляем небольшую «длительность» нажатия, чтобы звук был слышен:

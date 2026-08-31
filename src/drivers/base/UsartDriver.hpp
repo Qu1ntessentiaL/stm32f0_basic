@@ -30,20 +30,10 @@ class UsartDriver {
     }
 
     /**
-     * @brief Выключает тактирование USART1
-     */
-    static void DisableClock() {
-        if (RCC->APB2ENR & RCC_APB2ENR_USART1EN) {
-            RCC->APB2ENR &= ~RCC_APB2ENR_USART1EN;
-            __DSB();
-        }
-    }
-
-    /**
      * @brief Неблокирующая запись одного байта в буфер передачи
      * @param byte Байта для записи
      * @return true, если запись успешна, false если буфер полон
-     * @note Включает прерывание TXE при успешной записи
+     * @note Включает прерывание TXE при успешной записи (если оно ещё не включено)
      */
     bool tx_enqueue_byte(uint8_t byte) {
         const uint32_t primask = __get_PRIMASK();
@@ -53,7 +43,9 @@ class UsartDriver {
             return false;
         }
         m_tx_buf.push(byte);
-        USART1->CR1 |= USART_CR1_TXEIE;
+        if (!(USART1->CR1 & USART_CR1_TXEIE)) {
+            USART1->CR1 |= USART_CR1_TXEIE;
+        }
         __set_PRIMASK(primask);
         return true;
     }
@@ -180,17 +172,32 @@ public:
         }
 
         // Обработка приема и ошибок
-        // Важно: проверяем ORE перед RXNE, так как чтение RDR очищает оба флага
-        uint32_t isr = USART1->ISR;
-        
-        const uint32_t errors = isr & (USART_ISR_ORE | USART_ISR_FE |
-                                       USART_ISR_NE | USART_ISR_PE);
-        if (errors) {
+        // Важно: проверяем ошибки перед RXNE, так как чтение RDR очищает и то, и то
+        const uint32_t isr = USART1->ISR;
+
+        // ORE (overrun) — особый случай: по датащиту RDR НЕ портится и хранит
+        // предыдущий валидный байт, теряется только новый, не влезший в RDR.
+        // А вот FE/NE/PE означают, что искажён именно текущий принятый байт —
+        // его нужно выбросить.
+        const uint32_t framing_errors = isr & (USART_ISR_FE | USART_ISR_NE | USART_ISR_PE);
+        const uint32_t overrun = isr & USART_ISR_ORE;
+
+        if (framing_errors | overrun) {
             USART1->ICR = USART_ICR_ORECF | USART_ICR_FECF |
                           USART_ICR_NCF | USART_ICR_PECF;
-            if (isr & USART_ISR_RXNE)
-                (void)USART1->RDR;
-            ++m_rx_overrun_count;
+
+            if (isr & USART_ISR_RXNE) {
+                // Чтение RDR также очищает флаг RXNE.
+                const uint8_t byte = static_cast<uint8_t>(USART1->RDR);
+
+                // При "чистом" overrun (без FE/NE/PE) byte всё ещё достоверен —
+                // сохраняем его вместо того, чтобы просто выбросить.
+                if (overrun && !framing_errors && !m_rx_buf.full()) {
+                    m_rx_buf.push(byte);
+                }
+            }
+
+            if (overrun) ++m_rx_overrun_count;
         }
         else if (isr & USART_ISR_RXNE) {
             // Читаем данные из регистра (это также очищает флаг RXNE)
@@ -204,10 +211,6 @@ public:
                 ++m_rx_overrun_count;
             }
         }
-        
-        // Примечание: флаги FE (Frame Error), PE (Parity Error), NE (Noise Error)
-        // очищаются автоматически при чтении RDR вместе с RXNE
-        // Если нужна детальная диагностика ошибок, можно добавить отдельные счетчики
     }
 
     /**
