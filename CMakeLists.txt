@@ -17,14 +17,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Build type
 if (NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
+    set(CMAKE_BUILD_TYPE MinSizeRel CACHE STRING "Build type" FORCE)
 endif ()
 
-# Disable Link Time Optimization for reduced binary size
+# LTO выключен: быстрее сборка и читаемый map. На размер это не «оптимизация».
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 
 # CMake module path
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
+include(CompilerFlags)
 
 # ===================
 # Memory layout alias
@@ -55,6 +56,10 @@ add_executable(${PROJECT_NAME}
 
 # Application sources
 add_subdirectory(src)
+
+target_link_options(${PROJECT_NAME} PRIVATE
+        "-Wl,-Map=${CMAKE_BINARY_DIR}/${PROJECT_NAME}.map"
+)
 
 # ==============
 # Link Libraries
@@ -133,7 +138,9 @@ message(STATUS "======= Build Configuration =======")
 message(STATUS "Project:      ${PROJECT_NAME} v${PROJECT_VERSION}")
 message(STATUS "Generator:    ${CMAKE_GENERATOR}")
 message(STATUS "Binary dir:   ${CMAKE_BINARY_DIR}")
+string(TOUPPER "${CMAKE_BUILD_TYPE}" _stm32_bt)
 message(STATUS "Build Type:   ${CMAKE_BUILD_TYPE}")
+message(STATUS "C flags:      ${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_${_stm32_bt}}")
 message(STATUS "Toolchain:    ${CMAKE_C_COMPILER_ID}")
 message(STATUS "C Standard:   ${CMAKE_C_STANDARD}")
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
