@@ -1,4 +1,4 @@
-# Реализация таблицы переходов для DS18B20 FSM
+# Реализация таблицы переходов для DS18X20 FSM
 
 ## Текущая реализация: Transition с указателями на функции-члены
 
@@ -7,8 +7,8 @@
 ```cpp
 struct Transition {
     FsmStates state;                  ///< Исходное состояние
-    bool (DS18B20::*guard)() const;   ///< Условие перехода (nullptr = безусловный)
-    void (DS18B20::*action)();        ///< Действие при переходе
+    bool (DS18X20::*guard)() const;   ///< Условие перехода (nullptr = безусловный)
+    void (DS18X20::*action)();        ///< Действие при переходе
     FsmStates next;                   ///< Целевое состояние
 };
 ```
@@ -47,43 +47,43 @@ struct Transition {
 ### Реальная таблица переходов (из кода):
 
 ```cpp
-const DS18B20::Transition DS18B20::m_transitions[] = {
+const DS18X20::Transition DS18X20::m_transitions[] = {
     // IDLE -> START (безусловный, fallthrough - выполняем action_idle и сразу переходим в START)
-    {FsmStates::IDLE,     nullptr,                &DS18B20::action_idle,     FsmStates::START},
+    {FsmStates::IDLE,     nullptr,                &DS18X20::action_idle,     FsmStates::START},
     
     // START -> CONVERT (безусловный)
-    {FsmStates::START,    nullptr,                &DS18B20::action_start,    FsmStates::CONVERT},
+    {FsmStates::START,    nullptr,                &DS18X20::action_start,    FsmStates::CONVERT},
     
     // CONVERT -> WAIT (если присутствует)
-    {FsmStates::CONVERT,  &DS18B20::check_presence_ok, &DS18B20::action_convert_ok, FsmStates::WAIT},
+    {FsmStates::CONVERT,  &DS18X20::check_presence_ok, &DS18X20::action_convert_ok, FsmStates::WAIT},
     
     // CONVERT -> IDLE (если отсутствует)
-    {FsmStates::CONVERT,  &DS18B20::check_presence_fail, &DS18B20::action_convert_fail, FsmStates::IDLE},
+    {FsmStates::CONVERT,  &DS18X20::check_presence_fail, &DS18X20::action_convert_fail, FsmStates::IDLE},
     
     // WAIT -> CONTINUE (безусловный)
-    {FsmStates::WAIT,     nullptr,                &DS18B20::action_wait,     FsmStates::CONTINUE},
+    {FsmStates::WAIT,     nullptr,                &DS18X20::action_wait,     FsmStates::CONTINUE},
     
     // CONTINUE -> REQUEST (безусловный)
-    {FsmStates::CONTINUE, nullptr,                &DS18B20::action_continue, FsmStates::REQUEST},
+    {FsmStates::CONTINUE, nullptr,                &DS18X20::action_continue, FsmStates::REQUEST},
     
     // REQUEST -> READ (если присутствует)
-    {FsmStates::REQUEST,  &DS18B20::check_presence_ok, &DS18B20::action_request_ok, FsmStates::READ},
+    {FsmStates::REQUEST,  &DS18X20::check_presence_ok, &DS18X20::action_request_ok, FsmStates::READ},
     
     // REQUEST -> IDLE (если отсутствует)
-    {FsmStates::REQUEST,  &DS18B20::check_presence_fail, &DS18B20::action_request_fail, FsmStates::IDLE},
+    {FsmStates::REQUEST,  &DS18X20::check_presence_fail, &DS18X20::action_request_fail, FsmStates::IDLE},
     
     // READ -> DECODE (безусловный)
-    {FsmStates::READ,     nullptr,                &DS18B20::action_read,     FsmStates::DECODE},
+    {FsmStates::READ,     nullptr,                &DS18X20::action_read,     FsmStates::DECODE},
     
     // DECODE -> IDLE (безусловный, CRC проверяется внутри)
-    {FsmStates::DECODE,   nullptr,                &DS18B20::action_decode,   FsmStates::IDLE},
+    {FsmStates::DECODE,   nullptr,                &DS18X20::action_decode,   FsmStates::IDLE},
 };
 ```
 
 ### Реальная реализация poll():
 
 ```cpp
-void DS18B20::poll() {
+void DS18X20::poll() {
     // Check if timer update interrupt occurred (indicates operation completion)
     if (!(TIM1->SR & TIM_SR_UIF)) return;
     TIM1->SR = 0;
@@ -128,7 +128,7 @@ void DS18B20::poll() {
 
     // Если переход не найден - ошибка
     if (!transition_found) {
-        ds18b20_temp_ready(ErrorStatus::TEMP_ERROR_GENERIC
+        ds18x20_temp_ready(ErrorStatus::TEMP_ERROR_GENERIC
 #if defined ELAPSED_TIME
                 , DWT->CYCCNT - elapsed_time
 #endif

@@ -11,7 +11,7 @@ file(GLOB_RECURSE APP_SOURCES
 # Exclude specific files (if needed)
 set(EXCLUDE_FILES
         # Example:
-        # ${CMAKE_CURRENT_LIST_DIR}/devices/ds18b20/ds18b20.cpp
+        # ${CMAKE_CURRENT_LIST_DIR}/devices/ds18x20/ds18x20.cpp
 )
 
 foreach (file ${EXCLUDE_FILES})

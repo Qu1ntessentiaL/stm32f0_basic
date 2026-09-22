@@ -77,8 +77,8 @@ void hardware_init(App& app) {
     display.Init();
     app.display = &display;
 
-    // DS18B20 (use PA8, TIM1, DMA1)
-    static DS18B20 sensor;
+    // DS18x20 (DS18B20 / DS18S20, PA8, TIM1, DMA1)
+    static DS18X20 sensor;
     sensor.init();
     app.sensor = &sensor;
 

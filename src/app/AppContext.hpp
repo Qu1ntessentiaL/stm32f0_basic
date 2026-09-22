@@ -5,7 +5,7 @@
 #include "TimDriver.hpp"
 #include "GpioDriver.hpp"
 #include "ht1621.hpp"
-#include "ds18b20.hpp"
+#include "ds18x20.hpp"
 #include "ButtonsManager.hpp"
 #include "Controller.hpp"
 #include "Event.hpp"
@@ -19,7 +19,7 @@ struct App {
     UsartDriver<>   *uart = nullptr;
     TwiDriver       *twi = nullptr;
     TimDriver       *tim17 = nullptr;
-    DS18B20         *sensor = nullptr;
+    DS18X20         *sensor = nullptr;
     HT1621B         *display = nullptr;
     GpioDriver      *red_led = nullptr;
     GpioDriver      *green_led = nullptr;

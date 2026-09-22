@@ -1,21 +1,21 @@
 /**
- * @file ds18b20.h
- * @brief Non-blocking DS18B20 temperature sensor driver for STM32F103
- * 
- * This driver implements a strictly non-blocking interface for the DS18B20 
- * temperature sensor using hardware timers and DMA on STM32F103 microcontrollers.
- * 
+ * @file ds18x20.hpp
+ * @brief Non-blocking DS18x20 temperature sensor driver for STM32F0
+ *
+ * This driver implements a strictly non-blocking interface for Dallas/Maxim
+ * DS18B20 and DS18S20 temperature sensors using hardware timers and DMA.
+ *
  * Key features:
  * - Pure bare-metal, register-level programming
  * - No interrupts, no software delays, no busy-waits
  * - Hardware timer-based timing with DMA for data capture
  * - Non-blocking state machine architecture
  * - Weak function callbacks for customization
- * 
+ *
  * Usage:
- * 1. Call ds18b20_init() once at startup
- * 2. Call ds18b20_poll() repeatedly from main loop
- * 3. Implement weak callbacks ds18b20_led_control() and ds18b20_temp_ready()
+ * 1. Call init() once at startup
+ * 2. Call poll() repeatedly from main loop
+ * 3. Implement weak callbacks ds18x20_led_control() and ds18x20_temp_ready()
  *    to handle LED feedback and temperature results
  */
 
@@ -23,7 +23,7 @@
 
 #include "stm32f0xx.h"
 
-class DS18B20 {
+class DS18X20 {
     enum class FsmStates : uint8_t {
         IDLE,
         START,
@@ -36,7 +36,7 @@ class DS18B20 {
         ERROR
     };
     /**
-     * @brief DS18B20 driver context structure using union for memory efficiency
+     * @brief DS18x20 driver context structure using union for memory efficiency
      * @note Different stages of communication use the same memory for different purposes
      */
     struct Context {
@@ -51,12 +51,21 @@ class DS18B20 {
 
     struct Transition {
         FsmStates state;                  ///< Исходное состояние
-        bool (DS18B20::*guard)() const;   ///< Условие перехода (nullptr = безусловный)
-        void (DS18B20::*action)();       ///< Действие при переходе
+        bool (DS18X20::*guard)() const;   ///< Условие перехода (nullptr = безусловный)
+        void (DS18X20::*action)();       ///< Действие при переходе
         FsmStates next;                   ///< Целевое состояние
     };
 
-    uint8_t m_family = 0x28;
+    /**
+     * @brief Семейство датчика по 1-Wire family code (первый байт ROM).
+     *        Значения — официальные коды Dallas/Maxim, не порядковые номера.
+     */
+    enum class Family : uint8_t {
+        DS18S20 = 0x10,
+        DS18B20 = 0x28,
+    };
+
+    Family m_family = Family::DS18B20;
 
     inline void detect_sensor_type();
 
@@ -120,7 +129,7 @@ public:
     };
 
     /**
-     * @brief Initialize DS18B20 driver hardware and peripherals
+     * @brief Initialize DS18x20 driver hardware and peripherals
      */
     void init();
 
@@ -129,8 +138,9 @@ public:
      * @note Call periodically from main loop
      *
      * This function implements the core non-blocking state machine that manages
-     * the 1-Wire communication protocol with the DS18B20 sensor. It uses hardware
-     * timer and DMA to handle timing-critical operations without software delays.
+     * the 1-Wire communication protocol with a DS18B20 or DS18S20 sensor.
+     * It uses hardware timer and DMA to handle timing-critical operations
+     * without software delays.
      */
     void poll();
 };
