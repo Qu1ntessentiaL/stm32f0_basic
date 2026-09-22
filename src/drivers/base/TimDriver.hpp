@@ -47,6 +47,13 @@ public:
         if (m_irqCount > 0) m_irqCount--;
     }
 
+    /** Снять накопленные IRQ за раз (после паузы цикла не теряем пачку тиков). */
+    inline uint16_t takeIrqCount() {
+        const uint16_t n = m_irqCount;
+        m_irqCount = 0;
+        return n;
+    }
+
 private:
     TIM_TypeDef *m_tim;
     Callback m_callback;

@@ -2,6 +2,7 @@
 #include "AppContext.hpp"
 #include "fw_info.hpp"
 #include "ds18x20_scan.hpp"
+#include "RccDriver.hpp"
 
 extern App app;
 
@@ -25,22 +26,46 @@ void print_fw_info(UsartDriver<> *uart) {
     uart->write_str(fw_info.commit);
     uart->write_str("\r\n");
 
+    uart->write_str("Clock: ");
+    switch (RccDriver::ClockSource()) {
+        case RccDriver::Sysclk::HsePll48:
+            uart->write_str("HSE PLL 48MHz\r\n");
+            break;
+        case RccDriver::Sysclk::HsiPll48:
+            uart->write_str("HSI PLL 48MHz (HSE fail)\r\n");
+            break;
+        default:
+            uart->write_str("HSI 8MHz (PLL fail)\r\n");
+            break;
+    }
+
     uart->write_str("=====================\r\n");
 }
 
 namespace {
     void on_ds18x20_sample(uint8_t slot, int16_t temp) {
         if (DS18X20::is_error(temp) && app.uart) {
-            app.uart->write_str("DS18x20[");
-            app.uart->write_int(slot);
-            app.uart->write_str("] ");
+            const char *msg = "error";
             if (temp == DS18X20::TEMP_ERROR_NO_SENSOR) {
-                app.uart->write_str("no sensor\r\n");
+                msg = "no sensor";
             } else if (temp == DS18X20::TEMP_ERROR_CRC_FAIL) {
-                app.uart->write_str("CRC fail\r\n");
-            } else {
-                app.uart->write_str("error\r\n");
+                msg = "CRC fail";
             }
+            char line[28] = "DS18x20[";
+            char *p = line + 8;
+            if (slot >= 10) {
+                *p++ = static_cast<char>('0' + (slot / 10));
+            }
+            *p++ = static_cast<char>('0' + (slot % 10));
+            *p++ = ']';
+            *p++ = ' ';
+            while (*msg && (p < line + sizeof(line) - 3)) {
+                *p++ = *msg++;
+            }
+            *p++ = '\r';
+            *p++ = '\n';
+            *p = '\0';
+            app.uart->write_str(line);
         }
         if (app.queue) {
             app.queue->push({EventType::TemperatureReady, temp, slot});
@@ -55,7 +80,7 @@ void services_init(App &app) {
     static MelodyPlayer melody(app.piezo);
     app.melody = &melody;
 
-    static Controller ctrl(app.display, app.beep, app.heater);
+    static Controller ctrl(app.display, app.beep, app.heater, app.red_led);
     app.ctrl = &ctrl;
     ctrl.init();
 

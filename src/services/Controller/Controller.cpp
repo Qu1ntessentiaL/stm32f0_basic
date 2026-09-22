@@ -30,6 +30,7 @@ const Controller::Transition Controller::transitions[] = {
         /// Реальные, специфичные переходы
         {EventType::Tick100ms,        Controller::State::Idle,    nullptr,                 &Controller::actionPIDTick,           Controller::State::Idle},
         {EventType::Tick100ms,        Controller::State::Heating, nullptr,                 &Controller::actionPIDTick,           Controller::State::Heating},
+        {EventType::Tick100ms,        Controller::State::Error,   nullptr,                 &Controller::actionErrorTick,         Controller::State::Error},
 
         /// Переходы, содержащие wildcard по состоянию
         // TemperatureReady: состояние вычисляется динамически через evaluateState()
@@ -54,13 +55,15 @@ const Controller::Transition Controller::transitions[] = {
 
 /** Инициализация контроллера и синхронизация индикации. */
 void Controller::init() {
-    m_current = m_setpoint;
+    m_have_sample = false;
+    m_sensor_fault = false;
+    m_current = 0;
     m_showingSetpoint = false;
     m_setpointDisplayDeadline = 0;
     m_pid.reset();
     m_heaterPower = 0;
     m_lastPidTimestamp = GetMsTicks();
-    applyState(evaluateState());
+    applyState(State::Idle);
     displayCurrentTemperature();
 }
 
@@ -132,9 +135,16 @@ Controller::State Controller::actionTemperatureSample(const Event &e) {
 
     if (DS18X20::is_error(static_cast<int16_t>(e.value))) {
         m_heaterPower = 0;
+        m_have_sample = false;
+        m_sensor_fault = true;
+        if (!m_showingSetpoint) {
+            displaySensorError();
+        }
         return State::Error;
     }
 
+    m_have_sample = true;
+    m_sensor_fault = false;
     m_current = e.value;
 
     if (!m_showingSetpoint) {
@@ -199,6 +209,16 @@ Controller::State Controller::actionPIDTick(const Event &) {
     return m_state; // Состояние не изменяем
 }
 
+Controller::State Controller::actionErrorTick(const Event &) {
+    if (m_red_led) {
+        if (++m_error_blink >= 5) {
+            m_error_blink = 0;
+            m_red_led->Toggle();
+        }
+    }
+    return m_state;
+}
+
 Controller::State Controller::actionBeep(const Event &e) {
     if (m_beep && e.value == 0) {
         m_beep->requestBeep(); // короткий пик
@@ -216,6 +236,12 @@ bool Controller::isComboShort(const Event &e) {
 
 /** Высчитать новое состояние автомата, исходя из текущих температур. */
 Controller::State Controller::evaluateState() const {
+    if (m_sensor_fault) {
+        return State::Error;
+    }
+    if (!m_have_sample) {
+        return State::Idle;
+    }
     if (m_current > (m_setpoint + ErrorDelta)) {
         return State::Error;
     }
@@ -233,8 +259,15 @@ void Controller::applyState(State newState) {
     if (newState == State::Error) {
         m_heaterPower = 0;
         m_pid.reset();
+        if (previous != State::Error) {
+            m_error_blink = 0;
+            if (m_red_led) {
+                m_red_led->Set();
+            }
+        }
     } else if (previous == State::Error) {
         m_lastPidTimestamp = GetMsTicks();
+        m_error_blink = 0;
     }
 
     updateOutputsFor(newState);
@@ -250,7 +283,7 @@ void Controller::applyState(State newState) {
  *
  * Работа светодиодов:
  * - Зеленый горит, если power > 0
- * - Красный горит в Error
+ * - Красный мигает в Error
  */
 void Controller::updateOutputsFor(State state) {
     const bool error = (state == State::Error);
@@ -264,12 +297,35 @@ void Controller::updateOutputsFor(State state) {
         m_heater->setPower(power);
         // setPower ожидает значение от 0 до 1000 (0..100%)
     }
+
+    if (m_red_led && !error) {
+        m_red_led->Reset();
+    }
 }
 
 /** Показать на индикаторе текущую температуру (`t1`). */
 void Controller::displayCurrentTemperature() {
     m_showingSetpoint = false;
+    if (m_sensor_fault) {
+        displaySensorError();
+        return;
+    }
+    if (!m_have_sample) {
+        if (m_display) {
+            m_display->ShowString("t1 --");
+            m_display->ShowDot(1, false);
+            m_display->Flush();
+        }
+        return;
+    }
     displayTemperature('1', m_current);
+}
+
+void Controller::displaySensorError() {
+    if (!m_display) return;
+    m_display->ShowString("t1 Err");
+    m_display->ShowDot(1, false);
+    m_display->Flush();
 }
 
 /** Показать на индикаторе уставку (`tt`). */

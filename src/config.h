@@ -42,15 +42,17 @@ static constexpr uint32_t I2C_SPEED_HZ = 100'000;
 /// Временное отключение UART для локализации зависаний в USART IRQ.
 static constexpr bool UART_DIAGNOSTIC_ENABLED = true;
 
-/// GPIO пины
+/// GPIO пины (как в hardware_init). PA8 занят 1-Wire / TIM1_CH1, не LED и не MCO.
 namespace GPIO_PINS {
     static constexpr uint8_t USART_TX = 9;      ///< USART TX на PA9
     static constexpr uint8_t USART_RX = 10;     ///< USART RX на PA10
-    static constexpr uint8_t RED_LED = 8;       ///< Red LED на PA8
-    static constexpr uint8_t GREEN_LED = 6;     ///< Green LED на PA6
+    static constexpr uint8_t RED_LED = 5;       ///< Red LED на PA5
+    static constexpr uint8_t GREEN_LED = 6;     ///< Green LED на PA6 (TIM3_CH1)
     static constexpr uint8_t BLUE_LED = 11;     ///< Blue LED на PA11
-    static constexpr uint8_t LIGHT = 0;         ///< Light на PA0
-    static constexpr uint8_t CHARGER = 15;      ///< Charger на PA15
+    static constexpr uint8_t LIGHT = 0;         ///< Подсветка на PB0
+    static constexpr uint8_t CHARGER = 15;      ///< Charger sense на PA15
+    static constexpr uint8_t BUZZER = 1;        ///< Пьезо на PB1 (TIM14_CH1)
+    static constexpr uint8_t OW_DATA = 8;       ///< 1-Wire DS18x20 на PA8
 }
 
 //=============================================================================
@@ -110,8 +112,11 @@ static constexpr uint8_t I2C_TIMEOUT_MS = 100;
 // APP LOOP TIMING
 //=============================================================================
 
-/// Период тика 100ms (вызывается каждый 100-й вызов app_loop)
+/// Сколько 1 мс IRQ TIM17 складываются в одно событие Tick100ms
 static constexpr uint8_t APP_LOOP_TICKS_PER_100MS = 100;
+
+/// Максимум событий из очереди за один проход app_loop (не больше самой очереди)
+static constexpr uint8_t APP_LOOP_MAX_EVENTS_PER_ITER = EVENT_QUEUE_MAX_SIZE;
 
 //=============================================================================
 // TEMPERATURE CONTROLLER CONFIGURATION
@@ -228,6 +233,13 @@ namespace detail {
         }
         return false;
     }
+
+    constexpr bool ds18x20_has_specified_rom() {
+        for (const auto &rom : DS18X20_SENSORS) {
+            if (rom.specified()) return true;
+        }
+        return false;
+    }
 }
 
 static_assert(DS18X20_CONTROL_SLOT < DS18X20_SENSOR_COUNT,
@@ -237,8 +249,8 @@ static_assert(DS18X20_SENSOR_COUNT == 1 || !detail::ds18x20_has_unspecified_rom(
 static_assert(SENSOR_MAX_RETRIES >= 1, "SENSOR_MAX_RETRIES: хотя бы одна попытка чтения");
 
 /// Search ROM и печать найденных адресов в UART на старте.
-/// Выключить на релизе: скан блокирующий и заметно раздувает flash.
-static constexpr bool DS18X20_BUS_SCAN_ENABLED = true;
+/// На полевой прошивке выключить: скан блокирующий и раздувает flash.
+static constexpr bool DS18X20_BUS_SCAN_ENABLED = false;
 
 //=============================================================================
 // WATCHDOG CONFIGURATION

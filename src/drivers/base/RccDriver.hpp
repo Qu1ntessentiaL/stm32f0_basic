@@ -16,56 +16,108 @@ namespace RccDriver {
     }
 
     /**
-     * @brief Настроить тактирование на 48 МГц от внешнего кварцевого резонатора (HSE).
+     * Источник SYSCLK после @ref InitMax48MHz.
+     * HSI 8 МГц — только если не завёлся ни HSE, ни PLL: UART и 1-Wire поедут.
+     */
+    enum class Sysclk : uint8_t {
+        HsePll48, ///< HSE 8 МГц × 6
+        HsiPll48, ///< HSI/2 × 12, кварц не стартовал
+        Hsi8      ///< PLL тоже не готов
+    };
+
+    inline Sysclk g_sysclk = Sysclk::Hsi8;
+
+    inline Sysclk ClockSource() { return g_sysclk; }
+
+    namespace detail {
+        /** Спин до флага. На HSI 8 МГц ~200000 итераций ≈ 100…150 мс. */
+        inline bool wait_mask(volatile uint32_t &reg, uint32_t mask, uint32_t spins) {
+            while (spins--) {
+                if ((reg & mask) == mask) return true;
+            }
+            return false;
+        }
+
+        inline bool wait_eq(volatile uint32_t &reg, uint32_t mask, uint32_t value, uint32_t spins) {
+            while (spins--) {
+                if ((reg & mask) == value) return true;
+            }
+            return false;
+        }
+
+        constexpr uint32_t kOscSpins = 200000;
+
+        inline void disable_pll() {
+            RCC->CR &= ~RCC_CR_PLLON;
+            wait_eq(RCC->CR, RCC_CR_PLLRDY, 0, kOscSpins);
+        }
+
+        inline bool switch_to_pll() {
+            FLASH->ACR |= FLASH_ACR_LATENCY | FLASH_ACR_PRFTBE;
+            RCC->CR |= RCC_CR_PLLON;
+            if (!wait_mask(RCC->CR, RCC_CR_PLLRDY, kOscSpins)) {
+                disable_pll();
+                return false;
+            }
+            RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | RCC_CFGR_SW_PLL;
+            return wait_eq(RCC->CFGR, RCC_CFGR_SWS, RCC_CFGR_SWS_PLL, kOscSpins);
+        }
+    }
+
+    /**
+     * @brief 48 МГц: HSE 8 МГц × 6, при срыве кварца — HSI/2 × 12.
      *
-     * Аппаратно: пассивный кварц 8 МГц + нагрузочные конденсаторы 20 пФ на
-     * PF0 (OSC_IN) / PF1 (OSC_OUT). Это выделенные пины оскилятора на LQFP32
-     * (STM32F030K6) — настраивать их через GpioDriver не нужно, они
-     * переключаются автоматически при включении HSE (RCC_CR_HSEON).
-     *
-     * @note Жёсткая зависимость от HSE: если кварц не запустится (обрыв
-     *       контакта, не распаян и т.п.), ожидание HSERDY ниже зависнет
-     *       навечно — сознательно без fallback на HSI и без таймаута.
+     * Кварц: PF0/PF1, HSEBYP=0. SysTick ещё нет — таймаут спином по HSI.
+     * 1 wait-state flash обязателен выше 24 МГц.
      */
     inline void InitMax48MHz() {
-        // 1. Включить внешний кварц (HSE). HSEBYP=0 - пассивный резонатор,
-        //    а не готовый генератор с одним активным выводом (bypass-режим).
+        g_sysclk = Sysclk::Hsi8;
+
         RCC->CR &= ~RCC_CR_HSEBYP;
         RCC->CR |= RCC_CR_HSEON;
-        while (!(RCC->CR & RCC_CR_HSERDY)) {}
+        const bool hse_ok = detail::wait_mask(RCC->CR, RCC_CR_HSERDY, detail::kOscSpins);
 
-        // 2. Настроить PLL: HSE (8 МГц) / PREDIV(1) * 6 = 48 МГц
-        RCC->CFGR2 &= ~RCC_CFGR2_PREDIV;
-        RCC->CFGR2 |= RCC_CFGR2_PREDIV_DIV1;
+        if (hse_ok) {
+            RCC->CFGR2 = (RCC->CFGR2 & ~RCC_CFGR2_PREDIV) | RCC_CFGR2_PREDIV_DIV1;
+            RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_PLLSRC | RCC_CFGR_PLLMUL)) |
+                        RCC_CFGR_PLLSRC_HSE_PREDIV | RCC_CFGR_PLLMUL6;
+            if (detail::switch_to_pll()) {
+                RCC->CR &= ~RCC_CR_HSION;
+                g_sysclk = Sysclk::HsePll48;
+                SystemCoreClockUpdate();
+                return;
+            }
+        }
 
-        RCC->CFGR &= ~(RCC_CFGR_PLLSRC | RCC_CFGR_PLLMUL);
-        RCC->CFGR |= (RCC_CFGR_PLLSRC_HSE_PREDIV | RCC_CFGR_PLLMUL6);
+        detail::disable_pll();
+        RCC->CR &= ~RCC_CR_HSEON;
+        RCC->CR |= RCC_CR_HSION;
+        detail::wait_mask(RCC->CR, RCC_CR_HSIRDY, detail::kOscSpins);
 
-        // 3. Включить PLL
-        RCC->CR |= RCC_CR_PLLON;
-        while (!(RCC->CR & RCC_CR_PLLRDY)) {}
+        RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_PLLSRC | RCC_CFGR_PLLMUL)) |
+                    RCC_CFGR_PLLSRC_HSI_DIV2 | RCC_CFGR_PLLMUL12;
+        if (detail::switch_to_pll()) {
+            g_sysclk = Sysclk::HsiPll48;
+        }
 
-        // 4. Выбрать PLL как системную частоту
-        RCC->CFGR &= ~RCC_CFGR_SW;
-        RCC->CFGR |= RCC_CFGR_SW_PLL;
-        while ((RCC->CFGR & RCC_CFGR_SWS) != RCC_CFGR_SWS_PLL) {}
-
-        // 5. HSI больше не используется системным тактированием - выключаем,
-        //    чтобы контроллер был полностью переведён на внешний кварц.
-        RCC->CR &= ~RCC_CR_HSION;
-
-        // 6. Обновить глобальную переменную SystemCoreClock
         SystemCoreClockUpdate();
     }
 
-    inline void InitMCO() {
-        GpioDriver mco(GPIOA, 8);
-        mco.SetAlternateFunction(0);
-
-        RCC->CFGR &= ~RCC_CFGR_MCO;
-        RCC->CFGR |= RCC_CFGR_MCO_SYSCLK;
-        RCC->CFGR |= RCC_CFGR_MCOPRE_DIV16;
+    /**
+     * @brief Заморозить IWDG и таймеры 1-Wire/дисплея/тика на halt отладчика.
+     * @note Без этого TIM1 продолжает слоты 1-Wire, пока ядро стоит в GDB.
+     */
+    inline void FreezeDebugPeripherals() {
+        RCC->APB2ENR |= RCC_APB2ENR_DBGMCUEN;
+        DBGMCU->CR |= DBGMCU_CR_DBG_STOP | DBGMCU_CR_DBG_STANDBY;
+        DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP | DBGMCU_APB1_FZ_DBG_WWDG_STOP |
+                          DBGMCU_APB1_FZ_DBG_TIM3_STOP | DBGMCU_APB1_FZ_DBG_TIM14_STOP;
+        DBGMCU->APB2FZ |= DBGMCU_APB2_FZ_DBG_TIM1_STOP | DBGMCU_APB2_FZ_DBG_TIM16_STOP |
+                          DBGMCU_APB2_FZ_DBG_TIM17_STOP;
     }
+
+    /** PA8 занят 1-Wire — MCO сюда выводить нельзя. */
+    inline void InitMCO() {}
 
     inline void IWDG_Init() {
         // 1. Включить LSI (если еще не включен)

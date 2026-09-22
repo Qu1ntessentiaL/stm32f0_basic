@@ -12,7 +12,7 @@
 
 | Операция | Команда | Зачем |
 |---|---|---|
-| Convert T | Skip ROM `0xCC 0x44` | Все чипы считают температуру параллельно (~750 мс) |
+| Convert T | Skip ROM `0xCC 0x44` | Все чипы считают температуру параллельно; готовность по DQ, потолок 750 мс |
 | Read Scratchpad | Match ROM `0x55` + ROM[8] + `0xBE` | Читаем только выбранный слот |
 | Read Scratchpad | Skip ROM `0xCC 0xBE` | Только если слот один и ROM нулевой (стенд) |
 
@@ -54,13 +54,15 @@
                     │                               │     │
                     │                               │     │ Skip ROM + Convert T
                     │                               │     ▼
-                    │                               │   Wait ──► таймер 750 мс
+                    │                               │   Wait ──► 62.5 мс
                     │                               │     │
                     │                               │     ▼
-                    │                               │  SlotReset ──► reset
+                    │                               │  WaitPoll ──► read-слот DQ
                     │                               │     │
                     │                               │     ▼
-                    │                               │  SlotSelect
+                    │                               │  WaitCheck: DQ=1 или 750 мс?
+                    │                               │     нет: снова 62.5 мс
+                    │                               │     да: reset ──► SlotSelect
                     │                               │     │
                     │                               │  presence?
                     │                               │  нет: NO_SENSOR всем слотам, pause → Idle
@@ -86,8 +88,9 @@
 |---|---|---|---|
 | **Idle** | Пауза между циклами или UG после `rearm()` | `m_slot = 0`, `reset_bus()` | Convert |
 | **Convert** | Reset перед Convert T | Нет presence → `NO_SENSOR` всем слотам, пауза. Есть → Skip ROM + `0x44` | Idle / Wait |
-| **Wait** | Передача Convert T | Запуск таймера 750 мс | SlotReset |
-| **SlotReset** | Ожидание конвертации | `reset_bus()` для текущего слота | SlotSelect |
+| **Wait** | Передача Convert T | Пауза 62.5 мс | WaitPoll |
+| **WaitPoll** | Квант ожидания | Один read-слот готовности (DQ) | WaitCheck |
+| **WaitCheck** | Read-слот DQ | 1 или 12×62.5 мс → `reset_bus()`. Иначе ещё пауза | SlotSelect / WaitPoll |
 | **SlotSelect** | Reset перед чтением | Нет presence → `NO_SENSOR` всем слотам. Есть → Match/Skip + `0xBE` | Idle / SlotRead |
 | **SlotRead** | Передача команды чтения | `read_data()` — 72 слота в `m_pulse[]` | SlotDecode |
 | **SlotDecode** | Захват scratchpad | CRC ок → температура и следующий слот. CRC fail → повтор Match+Read до `SENSOR_MAX_RETRIES`, иначе `CRC_FAIL` | SlotSelect или Idle |
@@ -127,7 +130,7 @@
 ```
 Idle  reset 960 мкс
 Convert  команда ~1 мс
-Wait     750 мс
+Wait/Poll DQ  до 750 мс (часто раньше)
 для каждого слота:
     reset 960 мкс + Match/Read ~5 мс + decode (CPU, единицы мкс)
 pause 250 мс

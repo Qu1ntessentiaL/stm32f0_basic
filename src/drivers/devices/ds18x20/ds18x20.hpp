@@ -19,7 +19,7 @@
  * @ref DS18X20::poll() не ждёт в цикле. Каждый вызов проверяет TIM1 UIF:
  * если операция ещё идёт — выход; если завершилась — один шаг FSM и запуск
  * следующей аппаратной операции. CPU свободен на время reset (~960 мкс),
- * Convert (~1 мс передачи + 750 мс ожидания) и чтения scratchpad (~4.5 мс).
+ * Convert (~1 мс передачи + опрос DQ до 750 мс) и чтения scratchpad (~4.5 мс).
  *
  * @par Связь с приложением
  * Драйвер не знает про UART и очередь событий. Результат уходит в колбэк
@@ -72,7 +72,7 @@ public:
 
     /**
      * @brief Включает тактирование TIM1 / GPIOA / DMA1, настраивает PA8 и
-     *        переводит автомат в Idle с «заводным» UIF для первого @ref poll().
+     *        запускает первый reset (состояние Convert).
      */
     void init();
 
@@ -84,8 +84,9 @@ public:
     void poll();
 
     /**
-     * @brief Вернуть PA8 в AF/TIM1 после bit-bang скана и заново завести цикл.
-     * @note Сбрасывает @c m_last_temp[] в @c TEMP_ERROR_NO_SENSOR.
+     * @brief Вернуть PA8 в AF/TIM1 после bit-bang скана и запустить reset.
+     * @note Сбрасывает кэш слотов. Первый @ref poll() уже видит результат
+     *       этого reset (состояние Convert) — линия успевает отойти после скана.
      */
     void rearm();
 
@@ -127,8 +128,9 @@ private:
     enum class State : uint8_t {
         Idle,       ///< Пауза между циклами / старт: reset перед Convert T.
         Convert,    ///< Presence? Skip ROM + Convert T : все слоты NO_SENSOR.
-        Wait,       ///< Запуск ожидания 750 мс (конвертация).
-        SlotReset,  ///< Reset перед чтением текущего слота.
+        Wait,       ///< Convert T ушёл: пауза 62.5 мс перед опросом DQ.
+        WaitPoll,   ///< Пауза конвертации: один read-слот готовности.
+        WaitCheck,  ///< DQ=1 или 750 мс → reset слота; иначе ещё пауза.
         SlotSelect, ///< Presence? Match/Skip + Read Scratchpad : все слоты NO_SENSOR.
         SlotRead,   ///< Захват 72 бит scratchpad через DMA.
         SlotDecode  ///< CRC + температура; при CRC — повтор слота или CRC_FAIL.
@@ -159,7 +161,9 @@ private:
     Family m_family = Family::DS18B20; ///< Формула температуры текущего слота.
     uint8_t m_slot = 0;                ///< Индекс читаемого датчика.
     uint8_t m_attempts = 0;            ///< Уже выполненные чтения слота (CRC retry).
+    uint8_t m_convert_polls = 0;       ///< Сколько квантов 62.5 мс уже ждали Convert T.
     int16_t m_last_temp[DS18X20_SENSOR_COUNT]{}; ///< Кэш последнего результата.
+    int16_t m_last_notified[DS18X20_SENSOR_COUNT]{}; ///< Что уже ушло в колбэк (дедуп ошибок).
     SampleFn m_on_sample = nullptr;    ///< Необязательный получатель выборки.
 
     /**
@@ -168,7 +172,9 @@ private:
     bool rom_specified(uint8_t slot) const;
 
     /**
-     * @brief Записать кэш и вызвать колбэк (если задан).
+     * @brief Записать кэш и вызвать колбэк.
+     * @note Одинаковые ошибки подряд в колбэк не повторяются (UART/очередь).
+     *       Валидная температура уходит всегда.
      */
     void emit(int16_t temp);
 
@@ -229,6 +235,17 @@ private:
      * @brief Прочитать 9 байт scratchpad: 72 read-слота, длительности в @c m_pulse[].
      */
     void read_data();
+
+    /**
+     * @brief Один read-слот после Convert T: slave держит 0, пока считает.
+     * @note Только внешнее питание. Результат в @c m_pulse[0].
+     */
+    void read_ready_bit();
+
+    /**
+     * @brief Convert T закончен (логический 1 на DQ).
+     */
+    bool conversion_ready() const;
 
     /**
      * @brief Пауза ~250 мс между циклами и возврат в Idle.

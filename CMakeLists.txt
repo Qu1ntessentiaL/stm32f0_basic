@@ -92,26 +92,29 @@ endif ()
 # =================
 # Add firmware info
 # =================
+# Хеш пишется в generated/fw_git_defs.h на каждый ninja, не только на cmake.
+# copy_if_different: fw_info.cpp пересобирается, только если HEAD реально сменился.
 
+set(FW_GIT_DEFS ${CMAKE_BINARY_DIR}/generated/fw_git_defs.h)
 execute_process(
-        COMMAND git tag --points-at HEAD
-        OUTPUT_VARIABLE GIT_TAG
-        OUTPUT_STRIP_TRAILING_WHITESPACE
+        COMMAND ${CMAKE_COMMAND}
+            -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -DOUTPUT_FILE=${FW_GIT_DEFS}
+            -P ${CMAKE_SOURCE_DIR}/cmake/GenerateFwGit.cmake
 )
-
-execute_process(
-        COMMAND git rev-parse --short HEAD
-        OUTPUT_VARIABLE GIT_HASH
-        OUTPUT_STRIP_TRAILING_WHITESPACE
+add_custom_target(fw_git_refresh
+        COMMAND ${CMAKE_COMMAND}
+            -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+            -DOUTPUT_FILE=${FW_GIT_DEFS}
+            -P ${CMAKE_SOURCE_DIR}/cmake/GenerateFwGit.cmake
+        BYPRODUCTS ${FW_GIT_DEFS}
+        COMMENT "Refresh firmware git identity"
 )
+add_dependencies(${PROJECT_NAME} fw_git_refresh)
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_BINARY_DIR}/generated)
 
-add_compile_definitions(
-        FW_GIT_TAG="${GIT_TAG}"
-        FW_GIT_HASH="${GIT_HASH}"
-)
-
-message(STATUS "FW_GIT_TAG = [${GIT_TAG}]")
-message(STATUS "GIT_HASH   = [${GIT_HASH}]")
+file(STRINGS ${FW_GIT_DEFS} _fw_git_lines)
+message(STATUS "Firmware git: ${_fw_git_lines}")
 
 # ===================
 # Post-Build Commands

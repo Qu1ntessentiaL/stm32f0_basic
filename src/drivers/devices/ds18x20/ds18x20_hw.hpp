@@ -10,7 +10,7 @@
 
 namespace ds18x20_hw {
 
-constexpr uint8_t kOwPin = 8;
+constexpr uint8_t kOwPin = GPIO_PINS::OW_DATA;
 constexpr uint32_t kOwPinMask = 1u << kOwPin;
 constexpr uint16_t kTimPrescaler =
         static_cast<uint16_t>(SYSTEM_CLOCK_HZ / 1'000'000u - 1u);

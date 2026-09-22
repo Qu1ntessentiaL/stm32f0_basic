@@ -2,6 +2,7 @@
 
 #include "config.h"
 #include "TimDriver.hpp"
+#include "GpioDriver.hpp"
 #include "ht1621.hpp"
 #include "Event.hpp"
 #include "PID.hpp"
@@ -17,10 +18,12 @@
  */
 class Controller {
 public:
-    Controller(HT1621B *display, BeepManager *beep, PwmDriver *heater) :
+    Controller(HT1621B *display, BeepManager *beep, PwmDriver *heater,
+               GpioDriver *red_led = nullptr) :
             m_display(display),
             m_beep(beep),
-            m_heater(heater) {}
+            m_heater(heater),
+            m_red_led(red_led) {}
 
     /**
      * @brief Логические режимы работы термостата.
@@ -80,6 +83,7 @@ private:
     State actionDecreaseSetpoint(const Event &e);
     State actionIncreaseSetpoint(const Event &e);
     State actionPIDTick(const Event &e);
+    State actionErrorTick(const Event &e);
     State actionBeep(const Event &e);
     bool guardClickS1(const Event &e) const;
     bool guardClickS2(const Event &e) const;
@@ -95,6 +99,7 @@ private:
     void displayCurrentTemperature();
     void displaySetpointTemperature();
     void displayTemperature(char label, int value);  // value в десятых долях градуса
+    void displaySensorError();
     void ensureDisplayTimeout();
 
     // Вспомогательные функции
@@ -105,6 +110,8 @@ private:
 
     int m_setpoint = CONTROLLER_SETPOINT_DEFAULT;               ///< Уставка, задаваемая пользователем (в десятых долях °C, 250 = 25.0°C).
     int m_current = 0;                          ///< Текущая измеренная температура (в десятых долях °C).
+    bool m_have_sample = false;                 ///< Есть валидный отсчёт (не ошибка датчика).
+    bool m_sensor_fault = false;                ///< Датчик вернул ErrorStatus.
     State m_state = State::Idle;                ///< Состояние автомата.
     bool m_showingSetpoint = false;             ///< Отображается ли сейчас уставка `t2`.
     uint32_t m_setpointDisplayDeadline = 0;     ///< Момент возврата к отображению `t1`.
@@ -120,6 +127,7 @@ private:
     static constexpr int PidDeadband = 1;                       ///< Мёртвая зона PID (0.2°C).
 
     bool m_s1Held = false, m_s2Held = false;
+    uint8_t m_error_blink = 0;              ///< Делитель мигания красного LED в Error.
 
     /** PID-регулятор мощности нагрева (fixed-point integer) */
 
@@ -154,4 +162,5 @@ private:
     HT1621B *m_display;
     BeepManager *m_beep;
     PwmDriver *m_heater;
+    GpioDriver *m_red_led;
 };

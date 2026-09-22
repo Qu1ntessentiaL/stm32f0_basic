@@ -6,6 +6,7 @@ using namespace RccDriver;
 
 void hardware_init(App& app) {
     InitMax48MHz();
+    FreezeDebugPeripherals();
     SysTick_Config(SYSTEM_CLOCK_HZ / 1000);
 
     // UART1
@@ -27,12 +28,12 @@ void hardware_init(App& app) {
     app.tim17 = &tim17;
 
     // GPIO
-    static GpioDriver red_led(GPIOA, 5);
-    static GpioDriver green_led(GPIOA, 6);
-    static GpioDriver blue_led(GPIOA, 11);
-    static GpioDriver light(GPIOB, 0);
-    static GpioDriver charger(GPIOA, 15);
-    static GpioDriver buzzer(GPIOB, 1);
+    static GpioDriver red_led(GPIOA, GPIO_PINS::RED_LED);
+    static GpioDriver green_led(GPIOA, GPIO_PINS::GREEN_LED);
+    static GpioDriver blue_led(GPIOA, GPIO_PINS::BLUE_LED);
+    static GpioDriver light(GPIOB, GPIO_PINS::LIGHT);
+    static GpioDriver charger(GPIOA, GPIO_PINS::CHARGER);
+    static GpioDriver buzzer(GPIOB, GPIO_PINS::BUZZER);
 
     red_led.Init(GpioDriver::Mode::Output,
                       GpioDriver::OutType::PushPull,

@@ -75,19 +75,19 @@ void app_loop(App &app) {
         }
     }
 
-    // Timer 100 ms
-    if (app.tim17->getIrqCount()) {
-        app.tim17->decIrqCount();
-
-        static uint8_t tick100 = 0;
-        if (++tick100 >= APP_LOOP_TICKS_PER_100MS) {
-            tick100 = 0;
+    // TIM17 ≈ 1 кГц: забираем всю пачку, иначе Tick100ms плывёт при долгом цикле
+    {
+        static uint16_t tick100 = 0;
+        tick100 = static_cast<uint16_t>(tick100 + app.tim17->takeIrqCount());
+        while (tick100 >= APP_LOOP_TICKS_PER_100MS) {
+            tick100 = static_cast<uint16_t>(tick100 - APP_LOOP_TICKS_PER_100MS);
             app.queue->push({EventType::Tick100ms, 0});
         }
     }
 
-    // Event processing
-    if (auto e = app.queue->pop()) {
+    for (uint8_t i = 0; i < APP_LOOP_MAX_EVENTS_PER_ITER; ++i) {
+        auto e = app.queue->pop();
+        if (!e) break;
         dispatch_event(app, *e);
     }
 

@@ -4,7 +4,7 @@
  *
  * @details
  * Импульсы команд собираются в compile-time массивы (@c kConvertCmd,
- * @c kSkipReadCmd, @c kMatchReadCmds) и лежат во flash: CPU только
+ * @c kSkipReadCmd, таблица Match+Read только при ненулевом ROM) и лежат во flash: CPU только
  * подставляет указатель в DMA. Рабочий путь не содержит микросекундных
  * busy-wait — ожидание завершения всегда через TIM1 UIF в @ref DS18X20::poll().
  */
@@ -29,7 +29,7 @@ namespace {
     constexpr uint16_t kBitSlot = kOnePulse + kZeroPulse + 1; ///< Период бит-слота, мкс.
 
     constexpr uint16_t kWaitTickUs = 62500;  ///< Квант длинных пауз TIM1.
-    constexpr uint8_t kConvertRepeats = 11;  ///< (11+1)*62500 мкс = 750 мс (Convert T).
+    constexpr uint8_t kConvertPollMax = 12;  ///< 12 * 62.5 мс = 750 мс потолок Convert T.
     constexpr uint8_t kPauseRepeats = 3;     ///< (3+1)*62500 мкс = 250 мс между циклами.
 
     /**
@@ -75,14 +75,23 @@ namespace {
 
     /**
      * @brief Таблица импульсов Match+Read на каждый слот (во flash).
+     *        Инстанцируется только если в таблице есть ненулевой ROM.
      */
     template<std::size_t... I>
     constexpr std::array<MatchCmd, sizeof...(I)> make_match_cmds(std::index_sequence<I...>) {
         return {makeCommand(match_bytes<I>())...};
     }
 
-    constexpr auto kMatchReadCmds =
-            make_match_cmds(std::make_index_sequence<DS18X20_SENSOR_COUNT>{});
+    template<bool Enable>
+    struct MatchTable;
+
+    template<>
+    struct MatchTable<true> {
+        static constexpr auto table =
+                make_match_cmds(std::make_index_sequence<DS18X20_SENSOR_COUNT>{});
+    };
+
+    constexpr bool kAnySpecifiedRom = detail::ds18x20_has_specified_rom();
 
     constexpr bool specified_roms_crc_ok() {
         for (const auto &rom : DS18X20_SENSORS) {
@@ -114,10 +123,14 @@ void DS18X20::force_update() {
 }
 
 void DS18X20::start_timer(uint16_t arr, uint8_t rcr) {
+    DMA1_Channel3->CCR = 0;
+    DMA1_Channel4->CCR = 0;
+    TIM1->DIER = 0;
+    TIM1->CCER = 0;
     TIM1->ARR = arr;
     TIM1->RCR = rcr;
     force_update();
-    TIM1->CR1 = TIM_CR1_OPM | TIM_CR1_CEN;
+    TIM1->CR1 = TIM_CR1_URS | TIM_CR1_OPM | TIM_CR1_CEN;
 }
 
 void DS18X20::reset_bus() {
@@ -135,7 +148,7 @@ void DS18X20::reset_bus() {
     force_update();
     TIM1->CCR1 = 0;
     TIM1->DIER = TIM_DIER_CC2DE;
-    TIM1->CR1 = TIM_CR1_OPM | TIM_CR1_CEN;
+    TIM1->CR1 = TIM_CR1_URS | TIM_CR1_OPM | TIM_CR1_CEN;
 }
 
 void DS18X20::send_command(const uint8_t *cmd, uint16_t bit_count) {
@@ -152,7 +165,7 @@ void DS18X20::send_command(const uint8_t *cmd, uint16_t bit_count) {
     DMA1_Channel4->CMAR = reinterpret_cast<uint32_t>(&cmd[1]);
     DMA1_Channel4->CNDTR = bit_count;
     DMA1_Channel4->CCR = DMA_CCR_DIR | DMA_CCR_MINC | DMA_CCR_PSIZE_0 | DMA_CCR_EN;
-    TIM1->CR1 = TIM_CR1_OPM | TIM_CR1_CEN;
+    TIM1->CR1 = TIM_CR1_URS | TIM_CR1_OPM | TIM_CR1_CEN;
 }
 
 void DS18X20::read_data() {
@@ -170,7 +183,30 @@ void DS18X20::read_data() {
     DMA1_Channel3->CMAR = reinterpret_cast<uint32_t>(m_pulse);
     DMA1_Channel3->CNDTR = 72;
     DMA1_Channel3->CCR = DMA_CCR_MINC | DMA_CCR_EN;
-    TIM1->CR1 = TIM_CR1_OPM | TIM_CR1_CEN;
+    TIM1->CR1 = TIM_CR1_URS | TIM_CR1_OPM | TIM_CR1_CEN;
+}
+
+void DS18X20::read_ready_bit() {
+    m_pulse[0] = 0xFF; // нет фронта → не готово
+    TIM1->RCR = 0;
+    TIM1->ARR = kBitSlot;
+    TIM1->CCR1 = kOnePulse;
+    TIM1->CCMR1 = (TIM_CCMR1_OC1M_0 | TIM_CCMR1_OC1M_1 | TIM_CCMR1_OC1M_2 | TIM_CCMR1_OC1PE) |
+                  (TIM_CCMR1_CC2S_1 | TIM_CCMR1_IC2F_0 | TIM_CCMR1_IC2F_1 | TIM_CCMR1_IC2F_2);
+    TIM1->CCER = TIM_CCER_CC1E | TIM_CCER_CC2E;
+    TIM1->DIER = TIM_DIER_CC2DE;
+    force_update();
+    TIM1->CCR1 = 0;
+    DMA1_Channel3->CCR = 0;
+    DMA1_Channel3->CPAR = reinterpret_cast<uint32_t>(&TIM1->CCR2);
+    DMA1_Channel3->CMAR = reinterpret_cast<uint32_t>(m_pulse);
+    DMA1_Channel3->CNDTR = 1;
+    DMA1_Channel3->CCR = DMA_CCR_MINC | DMA_CCR_EN;
+    TIM1->CR1 = TIM_CR1_URS | TIM_CR1_OPM | TIM_CR1_CEN;
+}
+
+bool DS18X20::conversion_ready() const {
+    return m_pulse[0] <= kShortPulseMax;
 }
 
 bool DS18X20::check_presence() const {
@@ -182,9 +218,17 @@ void DS18X20::emit(int16_t temp) {
     if (m_slot < DS18X20_SENSOR_COUNT) {
         m_last_temp[m_slot] = temp;
     }
-    if (m_on_sample) {
-        m_on_sample(m_slot, temp);
+    if (!m_on_sample) {
+        return;
     }
+    if (is_error(temp) && m_slot < DS18X20_SENSOR_COUNT &&
+        m_last_notified[m_slot] == temp) {
+        return;
+    }
+    if (m_slot < DS18X20_SENSOR_COUNT) {
+        m_last_notified[m_slot] = temp;
+    }
+    m_on_sample(m_slot, temp);
 }
 
 int16_t DS18X20::decode_temperature(const uint8_t pad[9]) const {
@@ -212,11 +256,13 @@ void DS18X20::emit_bus_absent() {
 }
 
 void DS18X20::send_slot_read() {
-    if (rom_specified(m_slot)) {
-        send_command(kMatchReadCmds[m_slot].data(), kMatchReadBits);
-    } else {
-        send_command(kSkipReadCmd.data(), kSkipCmdBits);
+    if constexpr (kAnySpecifiedRom) {
+        if (rom_specified(m_slot)) {
+            send_command(MatchTable<true>::table[m_slot].data(), kMatchReadBits);
+            return;
+        }
     }
+    send_command(kSkipReadCmd.data(), kSkipCmdBits);
 }
 
 void DS18X20::decode_and_report() {
@@ -230,13 +276,25 @@ void DS18X20::decode_and_report() {
         }
     }
 
+    bool vacant = true;
+    for (uint8_t b : pad) {
+        if (b != 0xFF) {
+            vacant = false;
+            break;
+        }
+    }
+
     if (rom_specified(m_slot)) {
         m_family = static_cast<Family>(DS18X20_SENSORS[m_slot].bytes[0]);
     } else {
-        m_family = (pad[4] == 0xFF) ? Family::DS18S20 : Family::DS18B20;
+        m_family = Family::DS18B20;
     }
 
-    if (pad[8] == ds18x20_hw::dallas_crc8(pad, 8)) {
+    const bool crc_ok = !vacant && (pad[8] == ds18x20_hw::dallas_crc8(pad, 8));
+    if (crc_ok) {
+        if (!rom_specified(m_slot) && pad[4] == 0xFF) {
+            m_family = Family::DS18S20;
+        }
         m_attempts = 0;
         emit(decode_temperature(pad));
         next_slot_or_idle();
@@ -275,6 +333,7 @@ void DS18X20::init() {
     RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
     RCC->AHBENR |= RCC_AHBENR_GPIOAEN | RCC_AHBENR_DMA1EN;
     TIM1->PSC = kTimPrescaler;
+    TIM1->CR1 = TIM_CR1_URS;
     TIM1->BDTR = TIM_BDTR_MOE;
     configure_measurement_pin();
     rearm();
@@ -285,13 +344,19 @@ void DS18X20::rearm() {
     TIM1->CR1 = 0;
     TIM1->CCER = 0;
     TIM1->DIER = 0;
-    m_state = State::Idle;
+    DMA1_Channel3->CCR = 0;
+    DMA1_Channel4->CCR = 0;
+    TIM1->PSC = kTimPrescaler;
+    TIM1->CR1 = TIM_CR1_URS;
     m_slot = 0;
     m_attempts = 0;
+    m_convert_polls = 0;
     for (uint8_t i = 0; i < DS18X20_SENSOR_COUNT; ++i) {
         m_last_temp[i] = TEMP_ERROR_NO_SENSOR;
+        m_last_notified[i] = INT16_MAX;
     }
-    TIM1->EGR = TIM_EGR_UG; // UIF, чтобы первый poll() стартовал цикл
+    reset_bus();
+    m_state = State::Convert;
 }
 
 void DS18X20::poll() {
@@ -316,13 +381,26 @@ void DS18X20::poll() {
             break;
 
         case State::Wait:
-            start_timer(kWaitTickUs, kConvertRepeats);
-            m_state = State::SlotReset;
+            m_convert_polls = 0;
+            start_timer(kWaitTickUs, 0);
+            m_state = State::WaitPoll;
             break;
 
-        case State::SlotReset:
-            reset_bus();
-            m_state = State::SlotSelect;
+        case State::WaitPoll:
+            read_ready_bit();
+            m_state = State::WaitCheck;
+            break;
+
+        case State::WaitCheck:
+            ++m_convert_polls;
+            if (conversion_ready() || m_convert_polls >= kConvertPollMax) {
+                m_convert_polls = 0;
+                reset_bus();
+                m_state = State::SlotSelect;
+            } else {
+                start_timer(kWaitTickUs, 0);
+                m_state = State::WaitPoll;
+            }
             break;
 
         case State::SlotSelect:

@@ -15,7 +15,7 @@ enum class EventType : uint8_t {
     ButtonS3,         ///< Reserved button event.
     ButtonS4,         ///< Reserved button event.
     TemperatureReady, ///< Новое измерение: value — десятые °C, slot — номер датчика.
-    Tick100ms,        ///< Legacy periodic event (unused).
+    Tick100ms,        ///< Период 100 мс: PID, выходы, мигание Error.
     DisplayTimeout,   ///< Request to finish displaying the setpoint and revert to current temperature.
 
     Any               ///< Для перехода по любому событию (wildcard)
