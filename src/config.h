@@ -48,7 +48,7 @@ namespace GPIO_PINS {
     static constexpr uint8_t USART_RX = 10;     ///< USART RX на PA10
     static constexpr uint8_t RED_LED = 5;       ///< Red LED на PA5
     static constexpr uint8_t GREEN_LED = 6;     ///< Green LED на PA6 (TIM3_CH1)
-    static constexpr uint8_t BLUE_LED = 11;     ///< Blue LED на PA11
+    static constexpr uint8_t BLUE_LED = 11;     ///< Blue LED на PA11 (heartbeat суперлупа)
     static constexpr uint8_t LIGHT = 0;         ///< Подсветка на PB0
     static constexpr uint8_t CHARGER = 15;      ///< Charger sense на PA15
     static constexpr uint8_t BUZZER = 1;        ///< Пьезо на PB1 (TIM14_CH1)

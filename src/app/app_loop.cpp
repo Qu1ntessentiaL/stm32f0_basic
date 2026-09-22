@@ -79,9 +79,15 @@ void app_loop(App &app) {
     {
         static uint16_t tick100 = 0;
         tick100 = static_cast<uint16_t>(tick100 + app.tim17->takeIrqCount());
+        static uint8_t heartbeat = 0;
         while (tick100 >= APP_LOOP_TICKS_PER_100MS) {
             tick100 = static_cast<uint16_t>(tick100 - APP_LOOP_TICKS_PER_100MS);
             app.queue->push({EventType::Tick100ms, 0});
+            // Синий PA11: суперлуп жив (не FSM термостата). 1 Гц.
+            if (app.blue_led && ++heartbeat >= 5) {
+                heartbeat = 0;
+                app.blue_led->Toggle();
+            }
         }
     }
 
