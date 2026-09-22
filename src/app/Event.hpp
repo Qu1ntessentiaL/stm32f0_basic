@@ -14,7 +14,7 @@ enum class EventType : uint8_t {
     ButtonS2,         ///< User interacted with button S2 (value encodes press/hold/release).
     ButtonS3,         ///< Reserved button event.
     ButtonS4,         ///< Reserved button event.
-    TemperatureReady, ///< Fresh temperature sample is available (value holds Celsius degrees).
+    TemperatureReady, ///< Новое измерение: value — десятые °C, slot — номер датчика.
     Tick100ms,        ///< Legacy periodic event (unused).
     DisplayTimeout,   ///< Request to finish displaying the setpoint and revert to current temperature.
 
@@ -23,7 +23,8 @@ enum class EventType : uint8_t {
 
 struct Event {
     EventType type;
-    int value; // Универсальное поле (температура в десятых долях градуса, например)
+    int value;          ///< Температура в десятых °C, код кнопки и т.п.
+    uint8_t slot = 0;   ///< Номер датчика для TemperatureReady; для остальных событий 0.
 };
 
 class EventQueue {

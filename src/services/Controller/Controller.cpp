@@ -1,5 +1,6 @@
 #include "Controller.hpp"
 #include "config.h"
+#include "ds18x20.hpp"
 
 using namespace RccDriver;
 
@@ -125,6 +126,15 @@ bool Controller::guardClickS2(const Event &e) const {
 
 /** Action: сохранить новое измерение и перерассчитать состояние. */
 Controller::State Controller::actionTemperatureSample(const Event &e) {
+    if (e.slot != DS18X20_CONTROL_SLOT) {
+        return m_state;
+    }
+
+    if (DS18X20::is_error(static_cast<int16_t>(e.value))) {
+        m_heaterPower = 0;
+        return State::Error;
+    }
+
     m_current = e.value;
 
     if (!m_showingSetpoint) {

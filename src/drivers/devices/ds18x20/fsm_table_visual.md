@@ -1,184 +1,137 @@
-# Реализация таблицы переходов для DS18X20 FSM
+# Драйвер DS18X20
 
-## Текущая реализация: Transition с указателями на функции-члены
+Неблокирующий драйвер Dallas/Maxim **DS18B20** и **DS18S20** на STM32F030
+(PA8 / TIM1_CH1 / DMA1). Исходники: `ds18x20.hpp`, `ds18x20.cpp`.
+Инвентаризация шины вынесена в `ds18x20_scan.*` и на рабочий цикл не влияет.
 
-### Структура записи таблицы:
+## Идея адресации
 
-```cpp
-struct Transition {
-    FsmStates state;                  ///< Исходное состояние
-    bool (DS18X20::*guard)() const;   ///< Условие перехода (nullptr = безусловный)
-    void (DS18X20::*action)();        ///< Действие при переходе
-    FsmStates next;                   ///< Целевое состояние
-};
+На одной 1-Wire шине несколько датчиков. У каждого свой 64-битный ROM
+(`family + serial + CRC`). Номер датчика в прошивке — **индекс** в таблице
+`DS18X20_SENSORS` (`config.h`), а не «кто ответил первым».
+
+| Операция | Команда | Зачем |
+|---|---|---|
+| Convert T | Skip ROM `0xCC 0x44` | Все чипы считают температуру параллельно (~750 мс) |
+| Read Scratchpad | Match ROM `0x55` + ROM[8] + `0xBE` | Читаем только выбранный слот |
+| Read Scratchpad | Skip ROM `0xCC 0xBE` | Только если слот один и ROM нулевой (стенд) |
+
+При двух и более слотах нулевой ROM запрещён (`static_assert`): Skip ROM
+на чтении смешает ответы.
+
+Результат слота — колбэк `SampleFn(slot, temp)`: десятые °C либо `ErrorStatus`
+(`NO_SENSOR`, `CRC_FAIL`, `GENERIC`). Драйвер не трогает UART и очередь событий.
+
+## Железо
+
+- **PA8** — 1-Wire, AF2 TIM1_CH1, **open-drain**, внешняя подтяжка.
+- **TIM1** — 1 МГц (1 тик = 1 мкс), one-pulse mode. UIF = «операция закончилась».
+- **DMA1_CH3** — захват presence (`m_edge[2]`) или 72 длительности read-слотов (`m_pulse[72]`).
+- **DMA1_CH4** — подгрузка длительностей записи в `TIM1->CCR1`.
+
+`poll()` смотрит только `TIM1->SR.UIF`. Нет флага — сразу return. Busy-wait
+в измерительном контуре нет.
+
+Команды (Skip Convert, Skip Read, Match+Read на каждый слот) разворачиваются
+в импульсы **на этапе компиляции** и лежат во flash.
+
+## FSM измерения
+
+Линейный `switch` в `DS18X20::poll()`. Переход срабатывает, когда досчитался
+предыдущий таймер/DMA. `m_slot` — какой датчик читаем в этом проходе.
+
+```
+                    ┌──────────────────────────────────────────┐
+                    │                                          │
+                    ▼                                          │
+              ┌─────────┐   reset (~960 мкс)                   │
+   UIF/prime ─►  Idle   ──────────────────────────────────► Convert
+              └─────────┘                                      │
+                    ▲                                          │
+                    │ pause ~250 мс                            ▼
+                    │                                 presence?
+                    │                              нет / да
+                    │                               │     │
+                    │                               │     │ Skip ROM + Convert T
+                    │                               │     ▼
+                    │                               │   Wait ──► таймер 750 мс
+                    │                               │     │
+                    │                               │     ▼
+                    │                               │  SlotReset ──► reset
+                    │                               │     │
+                    │                               │     ▼
+                    │                               │  SlotSelect
+                    │                               │     │
+                    │                               │  presence?
+                    │                               │  нет: NO_SENSOR всем слотам, pause → Idle
+                    │                               │  да: Match/Skip + Read cmd
+                    │                               │     ▼
+                    │                               │  SlotRead ──► 72 бита DMA
+                    │                               │     ▼
+                    │                               │  SlotDecode
+                    │                               │     │
+                    │                               │  CRC fail и attempt < SENSOR_MAX_RETRIES?
+                    │                               │  да: reset → SlotSelect (тот же слот)
+                    │                               │     │
+                    │                               │  есть ещё слот?
+                    │                               │  да: ++m_slot, reset → SlotSelect ─┐
+                    │                               │  нет: pause ~250 мс → Idle          │
+                    │                               │                                      │
+                    └───────────────────────────────┴──────────────────────────────────────┘
 ```
 
-### Визуализация таблицы переходов:
+### Таблица состояний
+
+| Состояние | Что уже завершилось (UIF) | Действие | Следующее состояние |
+|---|---|---|---|
+| **Idle** | Пауза между циклами или UG после `rearm()` | `m_slot = 0`, `reset_bus()` | Convert |
+| **Convert** | Reset перед Convert T | Нет presence → `NO_SENSOR` всем слотам, пауза. Есть → Skip ROM + `0x44` | Idle / Wait |
+| **Wait** | Передача Convert T | Запуск таймера 750 мс | SlotReset |
+| **SlotReset** | Ожидание конвертации | `reset_bus()` для текущего слота | SlotSelect |
+| **SlotSelect** | Reset перед чтением | Нет presence → `NO_SENSOR` всем слотам. Есть → Match/Skip + `0xBE` | Idle / SlotRead |
+| **SlotRead** | Передача команды чтения | `read_data()` — 72 слота в `m_pulse[]` | SlotDecode |
+| **SlotDecode** | Захват scratchpad | CRC ок → температура и следующий слот. CRC fail → повтор Match+Read до `SENSOR_MAX_RETRIES`, иначе `CRC_FAIL` | SlotSelect или Idle |
+
+### Ошибки
+
+| Условие | Код | Что дальше |
+|---|---|---|
+| Нет presence на Convert или SlotSelect | `TEMP_ERROR_NO_SENSOR` на **каждый** слот | Пауза → Idle (шина общая, дальше читать бессмысленно) |
+| CRC scratchpad не сходится | повтор Match+Read до `SENSOR_MAX_RETRIES`, затем `TEMP_ERROR_CRC_FAIL` | Новый Convert T не запускается |
+| DS18S20 и `COUNT_PER_C == 0` | `TEMP_ERROR_GENERIC` | Слот засчитан, идём к следующему |
+| `temperature(slot)` при slot ≥ N | `TEMP_ERROR_NO_SENSOR` | Только геттер, FSM не меняется |
+
+Приложение (`services_init`) пушит и ошибки в `TemperatureReady`. Контроллер
+по `DS18X20::is_error()` на слоте `DS18X20_CONTROL_SLOT` переходит в Error
+и гасит нагрев.
+
+### Семейство датчика
+
+- ROM задан → `Family` из `rom[0]` (`0x28` DS18B20, `0x10` DS18S20).
+- ROM нулевой (один датчик) → эвристика `scratchpad[4] == 0xFF` ⇒ DS18S20
+  (нет config-регистра). Формула температуры разная: B20 сдвигает 12 бит,
+  S20 использует COUNT_REMAIN / COUNT_PER_C.
+
+## Search ROM (отдельный модуль)
+
+`ds18x20_scan_bus()` — Maxim AN187, GPIO bit-bang, блокирующие `delay_us()`.
+Только старт, флаг `DS18X20_BUS_SCAN_ENABLED`. Печатает ROM в виде
+`{{0x28, ...}}` для вставки в `DS18X20_SENSORS`. После скана обязателен
+`DS18X20::rearm()`: вернуть AF на PA8 и завести UIF для первого `poll()`.
+
+Порядок Search ROM — порядок битового дерева, **не** слоты приложения.
+Слоты назначаются вручную по напечатанным серийникам.
+
+## Типичный цикл по времени
 
 ```
-┌─────────────┬───────────────────────┬──────────────────────────┬─────────────┐
-│ Текущее     │ Условие               │ Действие                 │ Следующее   │
-│ состояние   │                       │                          │ состояние   │
-├─────────────┼───────────────────────┼──────────────────────────┼─────────────┤
-│ IDLE        │ всегда                │ action_idle()            │ START       │
-│             │                       │ (инициализация +         │             │
-│             │                       │  fallthrough)            │             │
-│ START       │ всегда                │ action_start()           │ CONVERT     │
-│             │                       │ (LED on + reset_bus)     │             │
-│ CONVERT     │ check_presence_ok()   │ action_convert_ok()      │ WAIT        │
-│             │                       │ (send convert command)   │             │
-│ CONVERT     │ check_presence_fail() │ action_convert_fail()    │ IDLE        │
-│             │                       │ (error + pause)          │             │
-│ WAIT        │ всегда                │ action_wait()            │ CONTINUE    │
-│             │                       │ (wait conversion)        │             │
-│ CONTINUE    │ всегда                │ action_continue()        │ REQUEST     │
-│             │                       │ (reset bus)              │             │
-│ REQUEST     │ check_presence_ok()   │ action_request_ok()      │ READ        │
-│             │                       │ (send read command)      │             │
-│ REQUEST     │ check_presence_fail() │ action_request_fail()    │ IDLE        │
-│             │                       │ (error + pause)          │             │
-│ READ        │ всегда                │ action_read()            │ DECODE      │
-│             │                       │ (read scratchpad)        │             │
-│ DECODE      │ всегда                │ action_decode()          │ IDLE        │
-│             │                       │ (decode + CRC check)     │             │
-└─────────────┴───────────────────────┴──────────────────────────┴─────────────┘
+Idle  reset 960 мкс
+Convert  команда ~1 мс
+Wait     750 мс
+для каждого слота:
+    reset 960 мкс + Match/Read ~5 мс + decode (CPU, единицы мкс)
+pause 250 мс
+→ снова Idle
 ```
 
-### Реальная таблица переходов (из кода):
-
-```cpp
-const DS18X20::Transition DS18X20::m_transitions[] = {
-    // IDLE -> START (безусловный, fallthrough - выполняем action_idle и сразу переходим в START)
-    {FsmStates::IDLE,     nullptr,                &DS18X20::action_idle,     FsmStates::START},
-    
-    // START -> CONVERT (безусловный)
-    {FsmStates::START,    nullptr,                &DS18X20::action_start,    FsmStates::CONVERT},
-    
-    // CONVERT -> WAIT (если присутствует)
-    {FsmStates::CONVERT,  &DS18X20::check_presence_ok, &DS18X20::action_convert_ok, FsmStates::WAIT},
-    
-    // CONVERT -> IDLE (если отсутствует)
-    {FsmStates::CONVERT,  &DS18X20::check_presence_fail, &DS18X20::action_convert_fail, FsmStates::IDLE},
-    
-    // WAIT -> CONTINUE (безусловный)
-    {FsmStates::WAIT,     nullptr,                &DS18X20::action_wait,     FsmStates::CONTINUE},
-    
-    // CONTINUE -> REQUEST (безусловный)
-    {FsmStates::CONTINUE, nullptr,                &DS18X20::action_continue, FsmStates::REQUEST},
-    
-    // REQUEST -> READ (если присутствует)
-    {FsmStates::REQUEST,  &DS18X20::check_presence_ok, &DS18X20::action_request_ok, FsmStates::READ},
-    
-    // REQUEST -> IDLE (если отсутствует)
-    {FsmStates::REQUEST,  &DS18X20::check_presence_fail, &DS18X20::action_request_fail, FsmStates::IDLE},
-    
-    // READ -> DECODE (безусловный)
-    {FsmStates::READ,     nullptr,                &DS18X20::action_read,     FsmStates::DECODE},
-    
-    // DECODE -> IDLE (безусловный, CRC проверяется внутри)
-    {FsmStates::DECODE,   nullptr,                &DS18X20::action_decode,   FsmStates::IDLE},
-};
-```
-
-### Реальная реализация poll():
-
-```cpp
-void DS18X20::poll() {
-    // Check if timer update interrupt occurred (indicates operation completion)
-    if (!(TIM1->SR & TIM_SR_UIF)) return;
-    TIM1->SR = 0;
-
-    // Поиск подходящего перехода в таблице
-    bool transition_found = false;
-    bool need_fallthrough = false;
-    
-    for (const auto &t : m_transitions) {
-        if (t.state == m_ctx.current_state) {
-            // Проверка условия (если есть)
-            if (!t.guard || (this->*t.guard)()) {
-                // Выполнение действия
-                (this->*t.action)();
-                // Переход в следующее состояние
-                m_ctx.current_state = t.next;
-                transition_found = true;
-                
-                // Обработка fallthrough: IDLE -> START выполняется сразу
-                if (t.next == FsmStates::START) {
-                    need_fallthrough = true;
-                    // Продолжаем поиск для START
-                    continue;
-                }
-                break;
-            }
-        }
-    }
-    
-    // Если нужен fallthrough (IDLE -> START), выполняем START -> CONVERT сразу
-    if (need_fallthrough && m_ctx.current_state == FsmStates::START) {
-        for (const auto &t : m_transitions) {
-            if (t.state == FsmStates::START) {
-                if (!t.guard || (this->*t.guard)()) {
-                    (this->*t.action)();
-                    m_ctx.current_state = t.next;
-                    break;
-                }
-            }
-        }
-    }
-
-    // Если переход не найден - ошибка
-    if (!transition_found) {
-        ds18x20_temp_ready(ErrorStatus::TEMP_ERROR_GENERIC
-#if defined ELAPSED_TIME
-                , DWT->CYCCNT - elapsed_time
-#endif
-        );
-        m_ctx.current_state = FsmStates::IDLE;
-    }
-}
-```
-
-### Методы-действия:
-
-Все действия вынесены в отдельные методы для лучшей читаемости:
-
-- `action_idle()` - инициализация цикла измерения (заполнение union, установка elapsed_time)
-- `action_start()` - начало измерения (LED on, reset_bus)
-- `action_convert_ok()` - отправка команды конвертации (если датчик присутствует)
-- `action_convert_fail()` - обработка ошибки отсутствия датчика
-- `action_wait()` - ожидание завершения конвертации
-- `action_continue()` - подготовка к чтению (reset_bus)
-- `action_request_ok()` - отправка команды чтения (если датчик присутствует)
-- `action_request_fail()` - обработка ошибки отсутствия датчика
-- `action_read()` - чтение данных из scratchpad
-- `action_decode()` - декодирование данных, проверка CRC, отправка результата
-
-### Методы-условия:
-
-- `check_presence_ok()` - проверка наличия датчика (возвращает `check_presence()`)
-- `check_presence_fail()` - проверка отсутствия датчика (возвращает `!check_presence()`)
-
-### Преимущества реализации:
-
-1. **Читаемость**: Все переходы видны в одном месте - в таблице `m_transitions[]`
-2. **Масштабируемость**: Легко добавить новые состояния и переходы - просто добавить запись в таблицу
-3. **Поддерживаемость**: Изменения вносятся только в таблицу и методы-действия
-4. **Тестируемость**: Легко проверить все возможные переходы
-5. **Документированность**: Таблица сама является документацией FSM
-6. **Сохранение логики**: Полностью сохранена оригинальная логика, включая fallthrough IDLE->START
-
-### Особенности реализации:
-
-- **Fallthrough IDLE->START**: Сохранена оригинальная логика, когда IDLE и START выполняются в одном вызове `poll()`
-- **Условные переходы**: CONVERT и REQUEST имеют два возможных перехода в зависимости от наличия датчика
-- **CRC проверка**: Выполняется внутри `action_decode()`, не влияет на переход состояния
-- **Обработка ошибок**: Неожиданные состояния обрабатываются и возвращают FSM в IDLE
-
-### Гарантии сохранения логики:
-
-✅ Все действия идентичны оригинальному switch-case коду  
-✅ Порядок выполнения сохранен  
-✅ Fallthrough IDLE->START работает так же  
-✅ Условные переходы работают идентично  
-✅ Обработка ошибок сохранена  
-✅ Использование `elapsed_time` идентично (static на уровне файла)
+При одном датчике период ≈ 1 с. CPU занят только в моменты `poll()` с установленным UIF.

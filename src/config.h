@@ -190,6 +190,56 @@ static constexpr int DISPLAY_TWO_DIGIT_MAX = 99;
 /// Максимальное количество попыток читать датчик
 static constexpr uint8_t SENSOR_MAX_RETRIES = 3;
 
+/// 64-битный ROM DS18x20: family + 48-bit serial + CRC.
+struct Ds18x20Rom {
+    uint8_t bytes[8];
+
+    constexpr bool specified() const {
+        for (uint8_t b : bytes) {
+            if (b != 0) return true;
+        }
+        return false;
+    }
+};
+
+/**
+ * Датчики на одной 1-Wire шине. Индекс массива — номер датчика.
+ *
+ * Нулевой ROM допустим только при одном слоте: драйвер тогда ходит
+ * Skip ROM (как раньше, серийник знать не обязательно).
+ * Для двух и более датчиков у каждой записи должен быть настоящий ROM:
+ * Convert T — общий (Skip ROM), чтение — Match ROM + Read Scratchpad.
+ */
+inline constexpr Ds18x20Rom DS18X20_SENSORS[] = {
+        {{0, 0, 0, 0, 0, 0, 0, 0}},
+        // {{0x28, 0xAA, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66}},
+};
+
+static constexpr uint8_t DS18X20_SENSOR_COUNT =
+        static_cast<uint8_t>(sizeof(DS18X20_SENSORS) / sizeof(DS18X20_SENSORS[0]));
+
+/// Слот, которым питаются PID и дисплей «текущая температура».
+static constexpr uint8_t DS18X20_CONTROL_SLOT = 0;
+
+namespace detail {
+    constexpr bool ds18x20_has_unspecified_rom() {
+        for (const auto &rom : DS18X20_SENSORS) {
+            if (!rom.specified()) return true;
+        }
+        return false;
+    }
+}
+
+static_assert(DS18X20_CONTROL_SLOT < DS18X20_SENSOR_COUNT,
+              "DS18X20_CONTROL_SLOT вне таблицы датчиков");
+static_assert(DS18X20_SENSOR_COUNT == 1 || !detail::ds18x20_has_unspecified_rom(),
+              "При нескольких DS18x20 у каждого слота должен быть прописан ROM");
+static_assert(SENSOR_MAX_RETRIES >= 1, "SENSOR_MAX_RETRIES: хотя бы одна попытка чтения");
+
+/// Search ROM и печать найденных адресов в UART на старте.
+/// Выключить на релизе: скан блокирующий и заметно раздувает flash.
+static constexpr bool DS18X20_BUS_SCAN_ENABLED = true;
+
 //=============================================================================
 // WATCHDOG CONFIGURATION
 //=============================================================================
