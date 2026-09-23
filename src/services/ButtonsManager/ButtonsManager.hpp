@@ -49,8 +49,8 @@ private:
     }
 
     void checkCombination(EventQueue &queue) {
-        const bool s1 = !btnS1.Read();
-        const bool s2 = !btnS2.Read();
+        const bool s1 = btnS1.stablePressed();
+        const bool s2 = btnS2.stablePressed();
         const uint32_t now = RccDriver::GetMsTicks();
 
         static uint32_t comboStart = 0;

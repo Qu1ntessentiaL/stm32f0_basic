@@ -286,6 +286,10 @@ void HT1621B::showChar(uint8_t position, char c) {
         writeGlyph(digitBase(position), kDigitGlyphs[c - '0']);
         return;
     }
+    if (c == 'S' || c == 's') {
+        writeGlyph(digitBase(position), kDigitGlyphs[5]);
+        return;
+    }
 
     const int idx = letterIndex(c);
     if (idx >= 0)

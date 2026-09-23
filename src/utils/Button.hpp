@@ -12,8 +12,8 @@
  *                      неизменным, чтобы считаться устойчивым.
  * @tparam HoldMs       Период (мс) генерации событий удержания.
  */
-template<uint16_t DebounceMs = 30,
-         uint16_t HoldMs = 100>
+template<uint16_t DebounceMs = BUTTONS_DEBOUNCE_MS,
+         uint16_t HoldMs = BUTTONS_HOLD_MS>
 class Button : public GpioDriver {
 public:
     Button(GPIO_TypeDef *port, uint8_t pin) : GpioDriver(port, pin) {
@@ -54,6 +54,9 @@ public:
 
         return e;
     }
+
+    /** Устойчивое (после debounce) состояние: true = нажата. */
+    bool stablePressed() const { return m_stableState; }
 
 private:
     static bool timeReached(uint32_t now, uint32_t deadline) {

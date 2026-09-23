@@ -80,7 +80,7 @@ void services_init(App &app) {
     static MelodyPlayer melody(app.piezo);
     app.melody = &melody;
 
-    static Controller ctrl(app.display, app.beep, app.heater, app.red_led);
+    static Controller ctrl(app.display, app.beep, app.heater, app.red_led, app.light);
     app.ctrl = &ctrl;
     ctrl.init();
 

@@ -134,6 +134,13 @@ static constexpr int CONTROLLER_SETPOINT_MAX = 995;
 /// Время показа уставки на дисплее после нажатия (мс)
 static constexpr uint32_t CONTROLLER_SETPOINT_DISPLAY_DURATION_MS = 3000;
 
+/// Меню (S4): выход по таймауту без нажатий
+static constexpr uint32_t MENU_IDLE_TIMEOUT_MS = 5000;
+
+/// Подсветка и звук клавиш при первом старте (не из flash)
+static constexpr bool MENU_LIGHT_DEFAULT = false;
+static constexpr bool MENU_SOUND_DEFAULT = true;
+
 /// Перегрев, вызывающий error state (в десятых долях °C, 30 = 3.0°C)
 static constexpr int CONTROLLER_ERROR_DELTA = 30;
 
@@ -172,7 +179,10 @@ static constexpr uint32_t BUTTONS_DOUBLE_CLICK_GAP_MS = 250;
 static constexpr uint32_t BUTTONS_COMBO_LONG_THRESHOLD_MS = 400;
 
 /// Время debounce для кнопок (мс)
-static constexpr uint16_t BUTTONS_DEBOUNCE_MS = 30;
+static constexpr uint16_t BUTTONS_DEBOUNCE_MS = 50;
+
+/// Пауза после действия меню: второй фронт дребезга не переключает пункт
+static constexpr uint32_t MENU_INPUT_LOCK_MS = 220;
 
 /// Время для распознавания hold события (мс)
 static constexpr uint16_t BUTTONS_HOLD_MS = 100;

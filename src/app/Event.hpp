@@ -12,8 +12,8 @@ enum class EventType : uint8_t {
     None,             ///< Placeholder event, carries no semantic meaning.
     ButtonS1,         ///< User interacted with button S1 (value encodes press/hold/release).
     ButtonS2,         ///< User interacted with button S2 (value encodes press/hold/release).
-    ButtonS3,         ///< Reserved button event.
-    ButtonS4,         ///< Reserved button event.
+    ButtonS3,         ///< В меню — вкл/выкл пункта.
+    ButtonS4,         ///< Нажатие: вход/выход из меню.
     TemperatureReady, ///< Новое измерение: value — десятые °C, slot — номер датчика.
     Tick100ms,        ///< Период 100 мс: PID, выходы, мигание Error.
     DisplayTimeout,   ///< Request to finish displaying the setpoint and revert to current temperature.

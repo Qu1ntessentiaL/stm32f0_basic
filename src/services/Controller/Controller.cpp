@@ -32,25 +32,25 @@ const Controller::Transition Controller::transitions[] = {
         {EventType::Tick100ms,        Controller::State::Heating, nullptr,                 &Controller::actionPIDTick,           Controller::State::Heating},
         {EventType::Tick100ms,        Controller::State::Error,   nullptr,                 &Controller::actionErrorTick,         Controller::State::Error},
 
+        /// Меню (оверлей): выше уставки, термосостояние не меняем
+        {EventType::ButtonS4,         Controller::State::Any,     &Controller::guardMenuS4,        &Controller::actionMenuToggle, Controller::ComputeState},
+        {EventType::ButtonS1,         Controller::State::Any,     &Controller::guardMenuComboExit, &Controller::actionMenuToggle, Controller::ComputeState},
+        {EventType::ButtonS1,         Controller::State::Any,     &Controller::guardMenuPressS1,   &Controller::actionMenuPrev,   Controller::ComputeState},
+        {EventType::ButtonS2,         Controller::State::Any,     &Controller::guardMenuPressS2,   &Controller::actionMenuNext,   Controller::ComputeState},
+        {EventType::ButtonS3,         Controller::State::Any,     &Controller::guardMenuPressS3,   &Controller::actionMenuApply,  Controller::ComputeState},
+
         /// Переходы, содержащие wildcard по состоянию
-        // TemperatureReady: состояние вычисляется динамически через evaluateState()
-        {EventType::TemperatureReady, Controller::State::Any,     nullptr,                 &Controller::actionTemperatureSample, Controller::ComputeState},
-        // ButtonS1: уменьшение уставки, состояние вычисляется после изменения
+        {EventType::TemperatureReady, Controller::State::Any,     nullptr,                   &Controller::actionTemperatureSample, Controller::ComputeState},
         {EventType::ButtonS1,         Controller::State::Any,     &Controller::guardClickS1, &Controller::actionDecreaseSetpoint,  Controller::ComputeState},
         {EventType::ButtonS1,         Controller::State::Any,     &Controller::guardHeld,    &Controller::actionDecreaseSetpoint,  Controller::ComputeState},
 
-        // ButtonS2: увеличение уставки, состояние вычисляется после изменения
         {EventType::ButtonS2,         Controller::State::Any,     &Controller::guardClickS2, &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
         {EventType::ButtonS2,         Controller::State::Any,     &Controller::guardHeld,    &Controller::actionIncreaseSetpoint,  Controller::ComputeState},
 
-        // Звук при нажатии на кнопки.
-        // ButtonS4 сюда не входит: она проигрывает мелодию (MelodyPlayer,
-        // см. event_dispatcher.cpp) и сама владеет пьезо на время мелодии -
-        // короткий "клик" от actionBeep перебил бы её первую ноту.
-        {EventType::ButtonS1,         Controller::State::Any,     nullptr,                   &Controller::actionBeep,              Controller::State::Any},
-        {EventType::ButtonS2,         Controller::State::Any,     nullptr,                   &Controller::actionBeep,              Controller::State::Any},
-        {EventType::ButtonS3,         Controller::State::Any,     nullptr,                   &Controller::actionBeep,              Controller::State::Any},
-        /// Переходы, содержащие wildcard по типу события
+        {EventType::ButtonS1,         Controller::State::Any,     nullptr,                   &Controller::actionBeep,              Controller::ComputeState},
+        {EventType::ButtonS2,         Controller::State::Any,     nullptr,                   &Controller::actionBeep,              Controller::ComputeState},
+        {EventType::ButtonS3,         Controller::State::Any,     nullptr,                   &Controller::actionBeep,              Controller::ComputeState},
+        {EventType::ButtonS4,         Controller::State::Any,     nullptr,                   &Controller::actionBeep,              Controller::ComputeState},
 };
 
 /** Инициализация контроллера и синхронизация индикации. */
@@ -63,6 +63,9 @@ void Controller::init() {
     m_pid.reset();
     m_heaterPower = 0;
     m_lastPidTimestamp = GetMsTicks();
+    m_in_menu = false;
+    m_menu_item = 0;
+    applyLight();
     applyState(State::Idle);
     displayCurrentTemperature();
 }
@@ -78,6 +81,16 @@ void Controller::processEvent(const Event &e) {
     if (e.type == EventType::ButtonS2) {
         if (e.value == 0) m_s2Held = false;
         else if (e.value == 1) m_s2Held = true;
+    }
+
+    if (e.type == EventType::ButtonS3) {
+        if (e.value == 0) m_s3Held = false;
+        else if (e.value == 1) m_s3Held = true;
+    }
+
+    if (e.type == EventType::ButtonS4) {
+        if (e.value == 0) m_s4Held = false;
+        else if (e.value == 1) m_s4Held = true;
     }
 
     for (const auto &transition: transitions) {
@@ -106,6 +119,7 @@ void Controller::processEvent(const Event &e) {
 
 /** Обработка тайм-аутов и фоновых задач. */
 void Controller::poll() {
+    ensureMenuTimeout();
     ensureDisplayTimeout();
 }
 
@@ -116,15 +130,53 @@ bool Controller::guardPress(const Event &e) const {
 
 /** Guard: реагировать на повторные события «кнопка нажата» (value == 1). */
 bool Controller::guardHeld(const Event &e) const {
-    return e.value == 1;
+    return !m_in_menu && e.value == 1;
 }
 
 bool Controller::guardClickS1(const Event &e) const {
-    return e.value == 2 && !m_s1Held;
+    return guardNotInMenu(e) && e.value == 2 && !m_s1Held;
 }
 
 bool Controller::guardClickS2(const Event &e) const {
-    return e.value == 2 && !m_s2Held;
+    return guardNotInMenu(e) && e.value == 2 && !m_s2Held;
+}
+
+bool Controller::guardMenuS4(const Event &e) const {
+    return e.value == 0 && !menuInputLocked();
+}
+
+bool Controller::guardNotInMenu(const Event &) const {
+    return !m_in_menu;
+}
+
+bool Controller::guardMenuPressS1(const Event &e) const {
+    return m_in_menu && e.value == 0 && !menuInputLocked();
+}
+
+bool Controller::guardMenuPressS2(const Event &e) const {
+    return m_in_menu && e.value == 0 && !menuInputLocked();
+}
+
+bool Controller::guardMenuPressS3(const Event &e) const {
+    return m_in_menu && e.value == 0 && !menuInputLocked();
+}
+
+bool Controller::guardMenuComboExit(const Event &e) const {
+    return m_in_menu && e.value == 9 && !menuInputLocked();
+}
+
+bool Controller::menuInputLocked() const {
+    return !timeReached(GetMsTicks(), m_menu_lock_until);
+}
+
+void Controller::armMenuLock() {
+    m_menu_lock_until = GetMsTicks() + MenuInputLockMs;
+}
+
+void Controller::maybeBeep() {
+    if (m_key_sound && m_beep) {
+        m_beep->requestBeep();
+    }
 }
 
 /** Action: сохранить новое измерение и перерассчитать состояние. */
@@ -137,7 +189,7 @@ Controller::State Controller::actionTemperatureSample(const Event &e) {
         m_heaterPower = 0;
         m_have_sample = false;
         m_sensor_fault = true;
-        if (!m_showingSetpoint) {
+        if (!m_in_menu && !m_showingSetpoint) {
             displaySensorError();
         }
         return State::Error;
@@ -147,7 +199,7 @@ Controller::State Controller::actionTemperatureSample(const Event &e) {
     m_sensor_fault = false;
     m_current = e.value;
 
-    if (!m_showingSetpoint) {
+    if (!m_in_menu && !m_showingSetpoint) {
         displayCurrentTemperature();
     }
 
@@ -220,10 +272,59 @@ Controller::State Controller::actionErrorTick(const Event &) {
 }
 
 Controller::State Controller::actionBeep(const Event &e) {
-    if (m_beep && e.value == 0) {
-        m_beep->requestBeep(); // короткий пик
+    if (m_key_sound && m_beep && e.value == 0) {
+        m_beep->requestBeep();
     }
-    return m_state; // состояние не меняем
+    return m_state;
+}
+
+Controller::State Controller::actionMenuToggle(const Event &) {
+    armMenuLock();
+    if (m_in_menu) {
+        leaveMenu();
+    } else {
+        enterMenu();
+    }
+    return m_state;
+}
+
+Controller::State Controller::actionMenuPrev(const Event &) {
+    if (m_menu_item == 0) {
+        m_menu_item = static_cast<uint8_t>(MenuItemCount - 1);
+    } else {
+        --m_menu_item;
+    }
+    armMenuLock();
+    maybeBeep();
+    touchMenuDeadline();
+    displayMenu();
+    return m_state;
+}
+
+Controller::State Controller::actionMenuNext(const Event &) {
+    ++m_menu_item;
+    if (m_menu_item >= MenuItemCount) {
+        m_menu_item = 0;
+    }
+    armMenuLock();
+    maybeBeep();
+    touchMenuDeadline();
+    displayMenu();
+    return m_state;
+}
+
+Controller::State Controller::actionMenuApply(const Event &) {
+    if (m_menu_item == 0) {
+        m_backlight = !m_backlight;
+        applyLight();
+    } else {
+        m_key_sound = !m_key_sound;
+    }
+    armMenuLock();
+    maybeBeep();
+    touchMenuDeadline();
+    displayMenu();
+    return m_state;
 }
 
 bool Controller::isDouble(const Event &e) {
@@ -373,9 +474,52 @@ void Controller::displayTemperature(char label, int value) {
     m_display->Flush();
 }
 
+void Controller::displayMenu() {
+    if (!m_display) return;
+    const char *name = (m_menu_item == 0) ? "LIGht" : "SoUnd";
+    m_display->ShowString(name);
+    m_display->ShowDot(1, m_menu_item == 0 ? m_backlight : m_key_sound);
+    m_display->Flush();
+}
+
+void Controller::enterMenu() {
+    m_in_menu = true;
+    m_menu_item = 0;
+    m_showingSetpoint = false;
+    maybeBeep();
+    touchMenuDeadline();
+    displayMenu();
+}
+
+void Controller::leaveMenu() {
+    m_in_menu = false;
+    maybeBeep();
+    displayCurrentTemperature();
+}
+
+void Controller::applyLight() {
+    if (!m_light) return;
+    if (m_backlight) {
+        m_light->Set();
+    } else {
+        m_light->Reset();
+    }
+}
+
+void Controller::touchMenuDeadline() {
+    m_menu_deadline = make_deadline(GetMsTicks(), MenuIdleTimeoutMs);
+}
+
+void Controller::ensureMenuTimeout() {
+    if (!m_in_menu) return;
+    if (timeReached(GetMsTicks(), m_menu_deadline)) {
+        leaveMenu();
+    }
+}
+
 /** Проверить, не истёк ли таймаут отображения уставки. */
 void Controller::ensureDisplayTimeout() {
-    if (!m_showingSetpoint) return;
+    if (m_in_menu || !m_showingSetpoint) return;
     uint32_t now = GetMsTicks();
     if (timeReached(now, m_setpointDisplayDeadline)) {
         displayCurrentTemperature();

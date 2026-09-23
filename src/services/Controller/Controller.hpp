@@ -19,11 +19,12 @@
 class Controller {
 public:
     Controller(HT1621B *display, BeepManager *beep, PwmDriver *heater,
-               GpioDriver *red_led = nullptr) :
+               GpioDriver *red_led = nullptr, GpioDriver *light = nullptr) :
             m_display(display),
             m_beep(beep),
             m_heater(heater),
-            m_red_led(red_led) {}
+            m_red_led(red_led),
+            m_light(light) {}
 
     /**
      * @brief Логические режимы работы термостата.
@@ -85,8 +86,21 @@ private:
     State actionPIDTick(const Event &e);
     State actionErrorTick(const Event &e);
     State actionBeep(const Event &e);
+    State actionMenuToggle(const Event &e);
+    State actionMenuPrev(const Event &e);
+    State actionMenuNext(const Event &e);
+    State actionMenuApply(const Event &e);
     bool guardClickS1(const Event &e) const;
     bool guardClickS2(const Event &e) const;
+    bool guardMenuS4(const Event &e) const;
+    bool guardNotInMenu(const Event &e) const;
+    bool guardMenuPressS1(const Event &e) const;
+    bool guardMenuPressS2(const Event &e) const;
+    bool guardMenuPressS3(const Event &e) const;
+    bool guardMenuComboExit(const Event &e) const;
+    bool menuInputLocked() const;
+    void armMenuLock();
+    void maybeBeep();
     bool isDouble(const Event &e);
     bool isComboShort(const Event &e);
 
@@ -100,7 +114,13 @@ private:
     void displaySetpointTemperature();
     void displayTemperature(char label, int value);  // value в десятых долях градуса
     void displaySensorError();
+    void displayMenu();
+    void enterMenu();
+    void leaveMenu();
+    void applyLight();
+    void touchMenuDeadline();
     void ensureDisplayTimeout();
+    void ensureMenuTimeout();
 
     // Вспомогательные функции
     static bool timeReached(uint32_t now, uint32_t deadline);
@@ -126,8 +146,19 @@ private:
     static constexpr uint32_t PidNominalSamplePeriodMs = CONTROLLER_PID_SAMPLE_PERIOD_MS;  ///< Базовый период дискретизации PID.
     static constexpr int PidDeadband = 1;                       ///< Мёртвая зона PID (0.2°C).
 
-    bool m_s1Held = false, m_s2Held = false;
+    bool m_s1Held = false, m_s2Held = false, m_s3Held = false, m_s4Held = false;
     uint8_t m_error_blink = 0;              ///< Делитель мигания красного LED в Error.
+
+    bool m_in_menu = false;
+    uint8_t m_menu_item = 0;
+    uint32_t m_menu_deadline = 0;
+    uint32_t m_menu_lock_until = 0;
+    bool m_backlight = MENU_LIGHT_DEFAULT;
+    bool m_key_sound = MENU_SOUND_DEFAULT;
+
+    static constexpr uint8_t MenuItemCount = 2;
+    static constexpr uint32_t MenuIdleTimeoutMs = MENU_IDLE_TIMEOUT_MS;
+    static constexpr uint32_t MenuInputLockMs = MENU_INPUT_LOCK_MS;
 
     /** PID-регулятор мощности нагрева (fixed-point integer) */
 
@@ -163,4 +194,5 @@ private:
     BeepManager *m_beep;
     PwmDriver *m_heater;
     GpioDriver *m_red_led;
+    GpioDriver *m_light;
 };
