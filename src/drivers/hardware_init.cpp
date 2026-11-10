@@ -41,11 +41,21 @@ void hardware_init(App& app) {
                       GpioDriver::Speed::Medium);
     red_led.Reset();
 
-    green_led.Init(GpioDriver::Mode::Alternate,
-                        GpioDriver::OutType::PushPull,
-                        GpioDriver::Pull::None,
-                        GpioDriver::Speed::High);
-    green_led.SetAlternateFunction(1); // TIM3_CH1
+    // PA6 — TIM3_CH1, пока нагреватель включён. Без ШИМ таймер не стартует,
+    // и альтернативная функция оставляет светодиод погашенным.
+    if constexpr (HEATER_CONTROL_ENABLED) {
+        green_led.Init(GpioDriver::Mode::Alternate,
+                       GpioDriver::OutType::PushPull,
+                       GpioDriver::Pull::None,
+                       GpioDriver::Speed::High);
+        green_led.SetAlternateFunction(1); // TIM3_CH1
+    } else {
+        green_led.Init(GpioDriver::Mode::Output,
+                       GpioDriver::OutType::PushPull,
+                       GpioDriver::Pull::None,
+                       GpioDriver::Speed::Medium);
+        green_led.Reset();
+    }
 
     blue_led.Init(GpioDriver::Mode::Output,
                   GpioDriver::OutType::PushPull,

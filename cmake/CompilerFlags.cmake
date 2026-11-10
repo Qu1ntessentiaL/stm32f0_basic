@@ -1,5 +1,6 @@
 # Политика оптимизации. Перезаписывает дефолты CMake (-O3 в Release, -g без -Og в Debug).
-# 32 КБ flash: и Release, и MinSizeRel — это -Os, не -O3.
+# 32 КБ flash: и Release, и MinSizeRel — это -Os, не -O3 и не -Oz
+# (на этой прошивке -Oz совпал с -Os побайтно). LTO для них задаёт CMakeLists.txt.
 
 set(STM32_FLAGS_DEBUG          "-Og -g3")
 set(STM32_FLAGS_RELEASE        "-Os -g0 -DNDEBUG")

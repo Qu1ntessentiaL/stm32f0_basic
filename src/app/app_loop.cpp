@@ -5,8 +5,6 @@
 
 #include "AppContext.hpp"
 
-#include <optional>
-
 void app_loop(App &app) {
     if (!app.sensor || !app.buttons || !app.queue || !app.ctrl ||
         !app.beep || !app.melody || !app.tim17) {
@@ -21,20 +19,32 @@ void app_loop(App &app) {
     app.beep->poll();
     app.melody->poll();
 
-    // Дублирование действий кнопок через UART (клавиши '1'..'4')
-    // Добавляем небольшую «длительность» нажатия, чтобы звук был слышен:
-    // отправляем press сразу, release — через ~50 мс.
+    // Дублирование действий кнопок через UART (клавиши '1'..'4').
+    // Press уходит сразу, release — через UART_BUTTON_PRESS_DURATION_MS.
+    // Несколько клавиш подряд держат свои release: одна ячейка затирала предыдущую.
     {
-        static std::optional<Event> pending_uart_release;
-        static uint32_t pending_uart_release_deadline = 0;
+        struct PendingRelease {
+            Event event;
+            uint32_t deadline;
+        };
+        constexpr uint8_t MaxPendingReleases = 8;
+        static PendingRelease pending[MaxPendingReleases];
+        static uint8_t pendingCount = 0;
 
-        // Завершаем отложенный release, если подошло время
-        if (pending_uart_release && RccDriver::GetMsTicks() >= pending_uart_release_deadline) {
-            app.queue->push(*pending_uart_release);
-            pending_uart_release.reset();
+        const uint32_t now = RccDriver::GetMsTicks();
+        uint8_t i = 0;
+        while (i < pendingCount) {
+            // Вычитание в int32 переживает переполнение миллисекундного счётчика.
+            if (static_cast<int32_t>(now - pending[i].deadline) >= 0) {
+                app.queue->push(pending[i].event);
+                pending[i] = pending[pendingCount - 1];
+                --pendingCount;
+            } else {
+                ++i;
+            }
         }
 
-        if (app.uart && app.queue && app.uart->has_data()) {
+        if (app.uart && app.uart->has_data()) {
             constexpr uint8_t MaxUartEventsPerLoop = 8;
             uint8_t processed = 0;
             while (app.uart->has_data() && processed++ < MaxUartEventsPerLoop) {
@@ -65,12 +75,14 @@ void app_loop(App &app) {
                         continue;
                 }
 
-                // Отправляем press сразу
                 app.queue->push(evt_press);
 
-                // Планируем release (или заменяем предыдущий отложенный)
-                pending_uart_release = evt_release;
-                pending_uart_release_deadline = RccDriver::GetMsTicks() + UART_BUTTON_PRESS_DURATION_MS;
+                if (pendingCount < MaxPendingReleases) {
+                    pending[pendingCount++] = {evt_release, now + UART_BUTTON_PRESS_DURATION_MS};
+                } else {
+                    // Буфер полон — release сразу, чтобы клик не потерялся.
+                    app.queue->push(evt_release);
+                }
             }
         }
     }

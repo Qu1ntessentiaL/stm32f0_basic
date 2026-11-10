@@ -62,7 +62,7 @@ _Min_Stack_Size = 0x200; /* required amount of stack */
 /* Flash memory 0x08000000 - 0x08008000 */
 MEMORY
 {
-  RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 4K
+  RAM (rw)       : ORIGIN = 0x20000000, LENGTH = 4K
   FLASH (rx)     : ORIGIN = 0x08000000, LENGTH = 32K
 }
 
@@ -110,20 +110,22 @@ SECTIONS
     __exidx_end = .;
   } >FLASH
 
-  .preinit_array     :
+  /* READONLY: входные .init_array/.fini_array помечены WRITE.
+     Рядом с .text в FLASH это склеивается в один LOAD RWE. */
+  .preinit_array (READONLY) :
   {
     PROVIDE_HIDDEN (__preinit_array_start = .);
     KEEP (*(.preinit_array*))
     PROVIDE_HIDDEN (__preinit_array_end = .);
   } >FLASH
-  .init_array :
+  .init_array (READONLY) :
   {
     PROVIDE_HIDDEN (__init_array_start = .);
     KEEP (*(SORT(.init_array.*)))
     KEEP (*(.init_array*))
     PROVIDE_HIDDEN (__init_array_end = .);
   } >FLASH
-  .fini_array :
+  .fini_array (READONLY) :
   {
     PROVIDE_HIDDEN (__fini_array_start = .);
     KEEP (*(SORT(.fini_array.*)))

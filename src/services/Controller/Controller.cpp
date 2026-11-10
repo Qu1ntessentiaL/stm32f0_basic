@@ -57,6 +57,7 @@ const Controller::Transition Controller::transitions[] = {
 void Controller::init() {
     m_have_sample = false;
     m_sensor_fault = false;
+    m_overtemp = false;
     m_current = 0;
     m_showingSetpoint = false;
     m_setpointDisplayDeadline = 0;
@@ -189,6 +190,7 @@ Controller::State Controller::actionTemperatureSample(const Event &e) {
         m_heaterPower = 0;
         m_have_sample = false;
         m_sensor_fault = true;
+        m_overtemp = false;
         if (!m_in_menu && !m_showingSetpoint) {
             displaySensorError();
         }
@@ -336,14 +338,22 @@ bool Controller::isComboShort(const Event &e) {
 }
 
 /** Высчитать новое состояние автомата, исходя из текущих температур. */
-Controller::State Controller::evaluateState() const {
+Controller::State Controller::evaluateState() {
     if (m_sensor_fault) {
         return State::Error;
     }
     if (!m_have_sample) {
         return State::Idle;
     }
+    // Вход в перегрев — выше ErrorDelta. Пока m_overtemp, держимся в Error
+    // до ErrorClearDelta, чтобы шум вокруг порога не сбрасывал PID.
+    // Ошибка датчика этот замок не включает.
     if (m_current > (m_setpoint + ErrorDelta)) {
+        m_overtemp = true;
+    } else if (m_overtemp && m_current <= (m_setpoint + ErrorClearDelta)) {
+        m_overtemp = false;
+    }
+    if (m_overtemp) {
         return State::Error;
     }
     if (m_current < m_setpoint) {
@@ -383,7 +393,7 @@ void Controller::applyState(State newState) {
  * - State::Heating/Idle -> PID выдаёт 0..1000
  *
  * Работа светодиодов:
- * - Зеленый горит, если power > 0
+ * - Зелёный PA6: яркость ШИМ, если нагреватель собран; иначе GPIO в Heating
  * - Красный мигает в Error
  */
 void Controller::updateOutputsFor(State state) {
@@ -393,10 +403,16 @@ void Controller::updateOutputsFor(State state) {
     if (power < 0) power = 0;
     if (power > 1000) power = 1000;
 
-    // Управление нагревателем (PWM)
+    // Управление нагревателем (PWM). Тот же пин — зелёный светодиод.
     if (m_heater) {
         m_heater->setPower(power);
         // setPower ожидает значение от 0 до 1000 (0..100%)
+    } else if (m_green_led) {
+        if (state == State::Heating) {
+            m_green_led->Set();
+        } else {
+            m_green_led->Reset();
+        }
     }
 
     if (m_red_led && !error) {

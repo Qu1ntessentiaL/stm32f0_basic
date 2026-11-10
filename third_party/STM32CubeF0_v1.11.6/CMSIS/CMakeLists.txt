@@ -8,6 +8,8 @@ add_library(cmsis
 set_target_properties(cmsis
     PROPERTIES
         VERSION 1.11.6
+        # Reset_Handler в startup.s вызывает SystemInit. LTO на этом .c ломает линковку.
+        INTERPROCEDURAL_OPTIMIZATION OFF
 )
 
 target_include_directories(cmsis

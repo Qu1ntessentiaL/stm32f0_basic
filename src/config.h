@@ -144,6 +144,13 @@ static constexpr bool MENU_SOUND_DEFAULT = true;
 /// Перегрев, вызывающий error state (в десятых долях °C, 30 = 3.0°C)
 static constexpr int CONTROLLER_ERROR_DELTA = 30;
 
+/// Порог выхода из Error (десятые °C). Ниже порога входа, иначе шум датчика
+/// вокруг setpoint + CONTROLLER_ERROR_DELTA сбрасывает PID на каждом отсчёте.
+static constexpr int CONTROLLER_ERROR_CLEAR_DELTA = 10;
+
+static_assert(CONTROLLER_ERROR_CLEAR_DELTA < CONTROLLER_ERROR_DELTA,
+              "гистерезис Error: порог выхода должен быть ниже порога входа");
+
 /// Период дискретизации PID (мс)
 static constexpr uint32_t CONTROLLER_PID_SAMPLE_PERIOD_MS = 1000;
 

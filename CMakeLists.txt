@@ -20,7 +20,9 @@ if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE MinSizeRel CACHE STRING "Build type" FORCE)
 endif ()
 
-# LTO выключен: быстрее сборка и читаемый map. На размер это не «оптимизация».
+# Глобальный LTO выключен: system_stm32f0xx.c (цель cmsis) вызывает startup.s.
+# -flto на этом файле даёт «Unknown destination type (ARM/Thumb)» на SystemInit.
+# Для прошивки -flto включается ниже, только в Release и MinSizeRel.
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 
 # CMake module path
@@ -57,8 +59,17 @@ add_executable(${PROJECT_NAME}
 # Application sources
 add_subdirectory(src)
 
+# -Os -flto на размере: замер на этом дереве 12728 → 11924 Б flash, RAM не меняется.
+# Debug и RelWithDebInfo без LTO: карта читается по исходным функциям.
+# Ассемблерный startup не получает -flto (COMPILE_LANGUAGE отсекает ASM).
+target_compile_options(${PROJECT_NAME} PRIVATE
+        $<$<AND:$<OR:$<CONFIG:Release>,$<CONFIG:MinSizeRel>>,$<COMPILE_LANGUAGE:C>>:-flto>
+        $<$<AND:$<OR:$<CONFIG:Release>,$<CONFIG:MinSizeRel>>,$<COMPILE_LANGUAGE:CXX>>:-flto>
+)
 target_link_options(${PROJECT_NAME} PRIVATE
         "-Wl,-Map=${CMAKE_BINARY_DIR}/${PROJECT_NAME}.map"
+        $<$<OR:$<CONFIG:Release>,$<CONFIG:MinSizeRel>>:-flto>
+        $<$<OR:$<CONFIG:Release>,$<CONFIG:MinSizeRel>>:-Os>
 )
 
 # ==============

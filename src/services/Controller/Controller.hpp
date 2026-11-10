@@ -19,19 +19,21 @@
 class Controller {
 public:
     Controller(HT1621B *display, BeepManager *beep, PwmDriver *heater,
-               GpioDriver *red_led = nullptr, GpioDriver *light = nullptr) :
+               GpioDriver *red_led = nullptr, GpioDriver *light = nullptr,
+               GpioDriver *green_led = nullptr) :
             m_display(display),
             m_beep(beep),
             m_heater(heater),
             m_red_led(red_led),
-            m_light(light) {}
+            m_light(light),
+            m_green_led(green_led) {}
 
     /**
      * @brief Логические режимы работы термостата.
      */
     enum class State : uint8_t {
         Idle,    ///< Цель достигнута, нагрев не требуется.
-        Heating, ///< Нужно греть, загорается зелёный светодиод.
+        Heating, ///< Нужно греть. Зелёный PA6: ШИМ нагревателя либо GPIO, если ШИМ выключен.
         Error,   ///< Перегрев относительно цели, горит красный светодиод.
 
         Any      ///< Для перехода из любого состояния (wildcard)
@@ -105,7 +107,7 @@ private:
     bool isComboShort(const Event &e);
 
     // Управление состоянием
-    State evaluateState() const;
+    State evaluateState();
     void applyState(State newState);
     void updateOutputsFor(State state);
 
@@ -132,6 +134,7 @@ private:
     int m_current = 0;                          ///< Текущая измеренная температура (в десятых долях °C).
     bool m_have_sample = false;                 ///< Есть валидный отсчёт (не ошибка датчика).
     bool m_sensor_fault = false;                ///< Датчик вернул ErrorStatus.
+    bool m_overtemp = false;                    ///< Error из-за перегрева, держится до ErrorClearDelta.
     State m_state = State::Idle;                ///< Состояние автомата.
     bool m_showingSetpoint = false;             ///< Отображается ли сейчас уставка `t2`.
     uint32_t m_setpointDisplayDeadline = 0;     ///< Момент возврата к отображению `t1`.
@@ -142,9 +145,10 @@ private:
     static constexpr int SetpointStep = 5;                      ///< Шаг изменения уставки (в десятых долях °C, 5 = 0.5°C).
     static constexpr int SetpointMin = CONTROLLER_SETPOINT_MIN;                     ///< Минимально допустимая уставка (в десятых долях °C, -95 = -9.5°C).
     static constexpr int SetpointMax = CONTROLLER_SETPOINT_MAX;                     ///< Максимально допустимая уставка (в десятых долях °C, 995 = 99.5°C).
-    static constexpr int ErrorDelta = CONTROLLER_ERROR_DELTA;                       ///< Перегрев относительно цели (в десятых долях °C, 30 = 3.0°C).
+    static constexpr int ErrorDelta = CONTROLLER_ERROR_DELTA;                       ///< Вход в Error: перегрев относительно цели (десятые °C).
+    static constexpr int ErrorClearDelta = CONTROLLER_ERROR_CLEAR_DELTA;           ///< Выход из Error, ниже ErrorDelta.
     static constexpr uint32_t PidNominalSamplePeriodMs = CONTROLLER_PID_SAMPLE_PERIOD_MS;  ///< Базовый период дискретизации PID.
-    static constexpr int PidDeadband = 1;                       ///< Мёртвая зона PID (0.2°C).
+    static constexpr int PidDeadband = 1;                       ///< Мёртвая зона PID (0.1°C).
 
     bool m_s1Held = false, m_s2Held = false, m_s3Held = false, m_s4Held = false;
     uint8_t m_error_blink = 0;              ///< Делитель мигания красного LED в Error.
@@ -195,4 +199,5 @@ private:
     PwmDriver *m_heater;
     GpioDriver *m_red_led;
     GpioDriver *m_light;
+    GpioDriver *m_green_led; ///< PA6 как GPIO, когда нагреватель не собран.
 };
