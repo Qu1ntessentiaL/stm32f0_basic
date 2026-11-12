@@ -1,6 +1,11 @@
 set(CMAKE_SYSTEM_NAME               Generic)
 set(CMAKE_SYSTEM_PROCESSOR          arm)
 
+# FORCED пропускает ABI-проверку, поэтому CMake сам не узнает размер void*.
+# Cortex-M0 — 32 бита. Без этого GNUInstallDirs (CMake 4.4+) предупреждает,
+# что архитектура цели неизвестна.
+set(CMAKE_SIZEOF_VOID_P 4)
+
 set(CMAKE_C_COMPILER_FORCED TRUE)
 set(CMAKE_CXX_COMPILER_FORCED TRUE)
 set(CMAKE_C_COMPILER_ID GNU)

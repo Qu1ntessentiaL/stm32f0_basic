@@ -106,10 +106,9 @@ function(add_etl_library)
     set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
     # set(NO_STL ON CACHE BOOL "" FORCE)
 
-    # Suppress GNUInstallDirs warnings for embedded projects
-    set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS 1 CACHE INTERNAL "")
+    # Снимает флаг, который старые конфигурации оставляли в кэше на весь проект.
+    unset(CMAKE_SUPPRESS_DEVELOPER_WARNINGS CACHE)
     add_subdirectory(third_party/etl EXCLUDE_FROM_ALL)
-    unset(CMAKE_SUPPRESS_DEVELOPER_WARNINGS)
 
     message(STATUS "ETL: Configured (NO_STL mode)")
 endfunction()
